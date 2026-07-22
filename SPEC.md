@@ -66,6 +66,22 @@ Every number here was measured on the target machine on 2026-07-22. These are no
 | `eval_duration` | 3,865,353,000 | 3.87 s |
 | **Generation throughput** | — | **40.1 tok/s** |
 
+### 2.3a Correction — warm vs cold throughput (added during M1)
+
+The 40.1 tok/s above came from the **first ever cold run** and is depressed by first-load effects. Once M1's log parser was reading llama-server's own timing lines, two independent warm runs disagreed with it:
+
+| Run | Condition | Eval tokens | Throughput |
+|---|---|---|---|
+| 1 | cold (33.4 s load) | 155 | 40.10 tok/s |
+| 2 | warm | 19 | 63.02 tok/s |
+| 3 | warm | 610 | 63.10 tok/s |
+
+**Warm steady state is ~63 tok/s**; 40.1 is the cold-start figure. Gauge scales and the redline (now 70) are calibrated against the warm number.
+
+Verified against Ollama's own API on run 3: `eval_duration` 9,480,608,000 ns vs the parser's 9,480.6 ms — exact agreement.
+
+**Prompt-token caveat:** llama-server reports only prompt tokens it actually *evaluated*. On run 3, Ollama's API reported `prompt_eval_count: 44` while the log reported 18 — prefix caching absorbed the rest. For budget purposes the full prompt is what never reached Claude, so Phase A **undercounts input tokens on cache hits**. Phase C reads `prompt_eval_count` from the API and is the authoritative source.
+
 VRAM after load: 12,154 MiB / 16,376 MiB → **~4.2 GB headroom**. A second large model will not co-reside.
 
 Eviction: `expires_at` is set 5 minutes after load (Ollama default `keep_alive`). After eviction, the next request pays the full ~33 s cold start again.

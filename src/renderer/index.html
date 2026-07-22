@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+    />
+    <title>fuel</title>
+    <link rel="stylesheet" href="./style.css" />
+  </head>
+  <body class="phase-offline">
+    <main id="hud">
+      <header>
+        <div id="model">—</div>
+        <div id="status">connecting…</div>
+      </header>
+
+      <section id="headline">
+        <div id="usd">≈ $0.00</div>
+        <div id="usd-label">budget preserved</div>
+        <div id="tokens">0 tok today</div>
+      </section>
+
+      <section id="rate">
+        <canvas id="spark" width="292" height="30"></canvas>
+        <div id="rate-row">
+          <span id="util">0%</span>
+          <span id="tps">— tok/s</span>
+        </div>
+      </section>
+
+      <section id="hw">
+        <span id="vram">⬡ —</span>
+        <span id="power">⬡ —</span>
+      </section>
+
+      <footer>
+        <span id="tasks">0 tasks</span>
+        <span id="ctx"></span>
+      </footer>
+    </main>
+    <script type="module" src="./hud.ts"></script>
+  </body>
+</html>

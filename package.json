@@ -1,0 +1,24 @@
+{
+  "name": "fuel",
+  "version": "0.1.0",
+  "description": "A floating desktop HUD showing work Claude offloads to the local GPU",
+  "main": "./out/main/index.js",
+  "author": "chromaglow",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "tsc --noEmit && electron-vite build",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit",
+    "bench": "node --experimental-strip-types scripts/bench.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "electron": "^40.0.0",
+    "electron-vite": "^4.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.0.0"
+  }
+}

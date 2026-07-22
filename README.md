@@ -40,12 +40,31 @@ Everything the HUD's scales are calibrated against, measured on the target machi
 | GPU | RTX 4080 SUPER · 16,376 MiB · 320 W |
 | Model | `qwen2.5-coder:14b` Q4_K_M · 14.8 B params |
 | VRAM resident | 9.47 GB (→ ~4.2 GB headroom) |
-| **Generation** | **40.1 tok/s** |
+| **Generation (warm)** | **~63 tok/s** |
+| Generation (cold run) | 40.1 tok/s |
 | **Cold start** | **33.4 s** |
 | Eviction | 5 min idle (Ollama default) |
 | Context | **4,096** ⚠️ — the model supports 32,768 |
 
-That last row is a real bug, not a display detail: the MCP shim never sets `num_ctx`, so every delegation silently runs at 4K context. `fuel` fixes it.
+That last row is a real bug, not a display detail: the MCP shim never sets `num_ctx`, so every delegation silently runs at 4K context. `fuel` fixes it — and until it does, the HUD shows the truncation warning.
+
+## Running it
+
+```bash
+npm install
+npm run dev      # or: npm run build && npx electron .
+```
+
+Zero native dependencies — persistence uses Node 24's built-in `node:sqlite`, so there's no rebuild step and no Visual Studio toolchain required.
+
+| Shortcut | |
+|---|---|
+| `Ctrl+Alt+F` | show / hide |
+| `Ctrl+Alt+Q` | quit |
+
+Drag the panel anywhere; position is remembered per-monitor. `node scripts/inspect.mjs` dumps what's been captured.
+
+Data lives in `%LOCALAPPDATA%\fuel\fuel.db`.
 
 ## How
 
@@ -63,7 +82,11 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 ## Status
 
-Pre-implementation. The spec is written; M1 is next.
+**M1 complete** — the sensor layer works end to end. GPU telemetry and model residency stream at 1 Hz, the log tailer captures real inference events with exact token counts and timings, everything persists across restarts, and the HUD renders live state with the eviction countdown.
+
+Verified against Ollama's own API: on a 610-token generation the parser recorded `eval_ns` 9,480,608,000 — matching `eval_duration` exactly.
+
+Next: **M2** — the center ring, outer arc, click-through, tray icon, and the full set of visual states.
 
 ## License
 
