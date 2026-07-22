@@ -12,7 +12,7 @@
     "build": "tsc --noEmit && electron-vite build",
     "start": "electron-vite preview",
     "typecheck": "tsc --noEmit",
-    "bench": "node --experimental-strip-types scripts/bench.ts"
+    "test": "node --experimental-transform-types --import ./test/register.mjs --test test/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

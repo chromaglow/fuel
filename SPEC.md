@@ -621,7 +621,15 @@ Reverse proxy, `OLLAMA_HOST` relocation, watchdog + auto-bypass, pre-warm and `k
 2. **Nudge tuning data.** With zero historical offloads, the classifier has no ground truth. M4 likely needs a *shadow mode* — log classifications without displaying them — for a week before the counter goes live.
 3. **Desktop attribution.** Claude Desktop has a `logs/` directory and a cowork service but no supported hook API. Machine-wide *monitoring* is fully achievable; machine-wide *nudging* may remain Claude-Code-only. Is Desktop reduced to "you can finally offload, and here's what happened" — or is there a supportable signal in those logs worth investigating?
 4. **Pre-warm policy.** Should `fuel` pre-warm automatically on a schedule (e.g. when Claude Code launches), or strictly on manual request? Automatic pre-warming burns ~9.5 GB of VRAM and idle power for work that may never arrive.
-5. **`num_ctx: 32768` cost.** Raising context from 4,096 to 32,768 increases KV-cache VRAM. Needs measurement against the ~4.2 GB headroom before being made the default.
+5. **`num_ctx` cost — RESOLVED (M3).** Measured on the target machine:
+
+   | num_ctx | Resident VRAM | GPU free |
+   |---|---|---|
+   | 4,096 (the bug) | 9.47 GB | ~4.2 GB |
+   | **16,384** | **11.08 GB** | **3.2 GB** |
+   | 32,768 | 13.63 GB | 0.57 GB |
+
+   32,768 leaves only 585 MiB free — one browser tab away from spilling Ollama into system RAM. **16,384 is the default**: 4× the broken context, comfortable headroom. 32,768 is available via config with a headroom warning.
 
 ---
 

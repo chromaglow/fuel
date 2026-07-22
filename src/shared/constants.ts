@@ -27,8 +27,25 @@ export const COLD_START_NS = 1_000_000_000
 /** Keep raw 1 Hz samples for this long before pruning. */
 export const SAMPLE_RETENTION_DAYS = 30
 
-/** Loopback ingest port for the Phase C collector (not used in M1). */
+/** Loopback ingest port for the Phase C collector. */
 export const COLLECTOR_PORT = 47113
+export const COLLECTOR_HOST = '127.0.0.1'
+
+/**
+ * Default context the instrumented MCP shim requests, replacing Ollama's
+ * silent 4,096. Measured on the target machine (SPEC §12 Q5): 16,384 costs
+ * 11.08 GB resident and leaves 3.2 GB free, versus 32,768 which leaves only
+ * 0.57 GB — one browser tab from spilling into system RAM.
+ */
+export const DEFAULT_NUM_CTX = 16384
+
+/**
+ * How long a client-agnostic log event waits to be claimed by a richer MCP
+ * event for the same inference before it's committed on its own. This setup
+ * runs one generation at a time (single model, single slot), so pairing the
+ * most recent unmatched pair within the window is unambiguous.
+ */
+export const RECONCILE_WINDOW_MS = 6000
 
 export const WINDOW_WIDTH = 320
 /** Compact: header + 240px gauge + footer. */

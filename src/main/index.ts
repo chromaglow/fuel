@@ -27,6 +27,9 @@ import { createTray } from './tray.js'
 import { GpuMonitor } from './sensors/nvidiaSmi.js'
 import { pingOllama, readResident, readTags } from './sensors/ollamaApi.js'
 import { OllamaLogTailer } from './sensors/ollamaLog.js'
+import { Collector } from './collector/server.js'
+import { Reconciler } from './collector/reconcile.js'
+import { drainSpool } from './collector/spool.js'
 import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
 
 function dataDir(): string {
@@ -41,6 +44,8 @@ let tailer: OllamaLogTailer | null = null
 let tick: NodeJS.Timeout | null = null
 let tagsTimer: NodeJS.Timeout | null = null
 let gpuMon: GpuMonitor | null = null
+let collector: Collector | null = null
+let reconciler: Reconciler | null = null
 
 let utilHistory: number[] = []
 let logBusy = false
@@ -186,11 +191,15 @@ async function collect(): Promise<void> {
   win?.webContents.send('fuel:state', state)
 }
 
-function onOffloadEvent(e: OffloadEvent): void {
+/**
+ * The single sink for reconciled events — whichever of the two sources (log or
+ * MCP) survives deduplication ends up here exactly once. See Reconciler.
+ */
+function commitEvent(e: OffloadEvent): void {
   store.insertEvent(e)
 
   // Generation rate only — llama-server's "eval time" line excludes prompt
-  // processing and model load, matching the 40.1 tok/s baseline in SPEC §2.3.
+  // processing and model load, matching the ~63 tok/s warm baseline (§2.3a).
   const rate = tokensPerSecond(e.evalTokens ?? 0, e.evalNs ?? 0)
   if (rate != null) lastTokPerSec = rate
 
@@ -201,8 +210,16 @@ function startSensors(): void {
   gpuMon = new GpuMonitor(1)
   gpuMon.start()
 
+  reconciler = new Reconciler(commitEvent)
+
+  // Phase C: the MCP shim POSTs richer, attributed events here.
+  collector = new Collector((e) => reconciler?.onMcp(e))
+  collector.start()
+
+  // Phase A: the log tailer sees every inference but can't attribute it. The
+  // reconciler merges the two so a single offload is counted once.
   tailer = new OllamaLogTailer()
-  tailer.on('event', onOffloadEvent)
+  tailer.on('event', (e) => reconciler?.onLog(e))
   tailer.on('busy', (b) => {
     logBusy = b
   })
@@ -268,6 +285,13 @@ if (!app.requestSingleInstanceLock()) {
     startSensors()
     startHoverWatch()
 
+    // Replay any telemetry the shim spooled while fuel was closed, so offloads
+    // that happened between sessions still land on the gauge. Committed
+    // directly (not through the reconciler) — the matching log lines are long
+    // gone, so there is nothing to pair against.
+    const drained = drainSpool(dir, commitEvent)
+    if (drained > 0) console.log(`[fuel] drained ${drained} spooled event(s)`)
+
     win.once('ready-to-show', () => setClickThrough(win!, !interactive))
 
     tray = createTray(win, {
@@ -313,6 +337,8 @@ if (!app.requestSingleInstanceLock()) {
     if (hoverTimer) clearInterval(hoverTimer)
     tailer?.stop()
     gpuMon?.stop()
+    collector?.stop()
+    reconciler?.flushAll()
     globalShortcut.unregisterAll()
     tray?.destroy()
     store?.close()

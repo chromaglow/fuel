@@ -82,6 +82,15 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 ## Status
 
+**M3 complete** — the gauge can now be filled, and by any Claude client.
+
+- The MCP shim is rewritten: it **streams** Ollama's response for exact per-phase timings, requests a real **16,384-token context** (the old shim silently ran at 4,096), and POSTs an attributed telemetry record to a local collector — fire-and-forget, with a disk spool fallback so nothing is lost when fuel is closed.
+- A loopback **collector** on `127.0.0.1:47113` ingests those records; a **reconciler** merges them with the client-agnostic log events so a single offload is counted once, keeping the richer attributed record. That dedup is the riskiest logic in the project and has 13 unit tests plus a live 8→9-event check.
+- An **installer** (`node integrations/install.mjs`) wires the shim into Claude Code and — for the first time — Claude Desktop, which had no MCP servers at all. Every write is backed up; `status` and `uninstall` included.
+- Resolved SPEC §12 Q5 by measurement: `num_ctx: 32768` leaves only 585 MiB of VRAM free (unsafe); **16,384** costs 11.08 GB and leaves 3.2 GB — the new default.
+
+19 tests pass (`npm test`). The install step is a manual, explicit action — it modifies your live Claude configs — so run it yourself when ready.
+
 **M2 complete** — the HUD is built out and click-through.
 
 - Canvas gauge: budget ring, tachometer arc with tick bezel, and a GPU-utilisation sparkline tucked inside the dial.
@@ -94,7 +103,7 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 **M1 complete** — the sensor layer works end to end: 1 Hz GPU + model-residency telemetry, a log tailer that captures inference events with exact token counts (parser `eval_ns` matched Ollama's `eval_duration` to the nanosecond), and persistence across restarts.
 
-Next: **M3** — instrument the MCP shim (streaming + `num_ctx: 32768`), stand up the collector, and enable Claude Desktop offloading for the first time.
+Next: **M4** — the nudge engine: a `PostToolUse` hook that spots delegatable work Claude did inline, surfaced as unburned fuel.
 
 ## License
 
