@@ -1,15 +1,17 @@
-/* fuel HUD — M1.
+/* fuel HUD — M2.
    Frameless and translucent: the page background stays fully transparent so
    only the panel is painted onto the desktop. */
 
 :root {
   --accent: #22d3ee;
-  --accent-dim: #0e7490;
+  --accent-bright: #67e8f9;
   --warn: #fbbf24;
   --bad: #f87171;
-  --text: #dbeafe;
+  --good: #4ade80;
+  --text: #e0f2fe;
   --muted: #64748b;
-  --panel: rgba(7, 11, 17, 0.72);
+  --muted-bright: #94a3b8;
+  --panel: rgba(7, 11, 17, 0.74);
   --edge: rgba(34, 211, 238, 0.16);
 }
 
@@ -32,145 +34,242 @@ body {
 body {
   font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
   color: var(--text);
-  /* The whole panel is a drag handle in M1 so placement can be verified.
-     M2 replaces this with click-through + a modifier key. */
+  padding: 8px;
+}
+
+/* Interactive mode is opt-in (tray or Ctrl+Alt+I); only then is the HUD a
+   drag handle. In click-through mode it must never capture the pointer. */
+body.interactive #hud {
   -webkit-app-region: drag;
-  display: grid;
-  place-items: center;
-  padding: 10px;
+}
+body.interactive {
+  cursor: move;
 }
 
 #hud {
+  position: relative;
   width: 100%;
   height: 100%;
-  padding: 16px 18px;
-  border-radius: 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
   background: var(--panel);
   border: 1px solid var(--edge);
-  backdrop-filter: blur(14px) saturate(120%);
+  backdrop-filter: blur(16px) saturate(125%);
   box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.4),
-    0 18px 40px rgba(0, 0, 0, 0.45),
-    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 20px 44px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
   transition:
-    opacity 900ms ease,
-    box-shadow 400ms ease;
+    opacity 700ms ease,
+    box-shadow 450ms ease,
+    border-color 450ms ease;
 }
 
-/* ---- header ---- */
+/* ---------- header ---------- */
 
 header {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
+  flex: 0 0 auto;
 }
 
 #model {
-  font-size: 11px;
-  letter-spacing: 0.14em;
+  font-size: 10.5px;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--accent);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  transition: color 400ms ease;
 }
 
 #status {
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
   color: var(--muted);
 }
 
-/* ---- headline ---- */
+/* ---------- gauge ---------- */
 
-#headline {
-  text-align: center;
-  padding: 2px 0 4px;
+#gauge-wrap {
+  position: relative;
+  width: 240px;
+  height: 240px;
+  /* The gauge's 270deg sweep leaves the bottom of the canvas empty; pull the
+     next element up over that dead space instead of rendering a gap. */
+  margin: 2px auto -20px;
+  flex: 0 0 auto;
+}
+
+#gauge {
+  display: block;
+  width: 240px;
+  height: 240px;
+}
+
+#center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  /* Nudge up: the ring's 270deg gap is at the bottom, so optical centre
+     sits above geometric centre. */
+  transform: translateY(-14px);
+  pointer-events: none;
 }
 
 #usd {
-  font-size: 34px;
+  font-size: 31px;
   font-weight: 300;
-  line-height: 1.05;
+  line-height: 1;
   color: #f0f9ff;
-  text-shadow: 0 0 18px rgba(34, 211, 238, 0.35);
+  text-shadow: 0 0 20px rgba(34, 211, 238, 0.35);
   transition: text-shadow 400ms ease;
+  white-space: nowrap;
 }
 
 #usd-label {
-  font-size: 9px;
-  letter-spacing: 0.22em;
+  font-size: 8px;
+  letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-top: 3px;
+  margin-top: 5px;
 }
 
 #tokens {
-  font-size: 11px;
-  color: #94a3b8;
-  margin-top: 6px;
-}
-
-/* ---- throughput ---- */
-
-#rate {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-#spark {
-  width: 100%;
-  height: 30px;
-  display: block;
-}
-
-#rate-row {
-  display: flex;
-  justify-content: space-between;
   font-size: 10px;
-  color: var(--muted);
+  color: var(--muted-bright);
+  margin-top: 7px;
 }
 
 #tps {
-  color: var(--accent);
-}
-
-/* ---- hardware ---- */
-
-#hw {
-  display: flex;
-  justify-content: space-between;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 178px;
+  text-align: center;
   font-size: 10px;
-  color: #7c8da3;
+  color: var(--accent);
+  pointer-events: none;
+  transition: color 300ms ease;
 }
 
-/* ---- footer ---- */
+/* ---------- footer ---------- */
 
 footer {
   display: flex;
   justify-content: space-between;
-  font-size: 10px;
+  align-items: center;
+  gap: 8px;
+  font-size: 9.5px;
   color: var(--muted);
-  border-top: 1px solid rgba(148, 163, 184, 0.1);
+  border-top: 1px solid rgba(148, 163, 184, 0.09);
   padding-top: 8px;
+  flex: 0 0 auto;
+}
+
+/* Only pin the footer to the bottom in compact mode; when expanded the panel
+   below it should take the new space. */
+body:not(.expanded) footer {
+  margin-top: auto;
 }
 
 #ctx.warn {
   color: var(--warn);
 }
-
 #ctx.ok {
-  color: #4ade80;
+  color: var(--good);
 }
 
-/* ---- phase states (SPEC.md §7.3) ---- */
+/* ---------- expanded panel ---------- */
+
+#panel {
+  flex: 1 1 auto;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(148, 163, 184, 0.09);
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
+  transition:
+    opacity 260ms ease,
+    transform 260ms ease;
+  overflow: hidden;
+  font-size: 9.5px;
+}
+
+body.expanded #panel {
+  opacity: 1;
+  transform: none;
+}
+
+#panel .rows {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 10px;
+}
+
+#panel .k {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+#panel .v {
+  color: var(--muted-bright);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#panel .v.hl {
+  color: var(--accent);
+}
+#panel .v.warn {
+  color: var(--warn);
+}
+
+#panel .sub {
+  margin: 10px 0 5px;
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #475569;
+}
+
+#panel .tasks {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+#panel .task {
+  display: flex;
+  justify-content: space-between;
+  color: var(--muted-bright);
+  font-variant-numeric: tabular-nums;
+}
+
+#panel .task .t {
+  color: var(--muted);
+}
+#panel .task .flag {
+  color: var(--warn);
+}
+#panel .empty {
+  color: #475569;
+  font-style: italic;
+}
+
+/* ---------- phase states (SPEC.md §7.3) ---------- */
 
 .phase-offline #hud {
-  opacity: 0.35;
+  opacity: 0.34;
   filter: grayscale(1);
 }
 .phase-offline #model,
@@ -180,46 +279,54 @@ footer {
 
 .phase-idle-evicted #hud {
   opacity: 0.5;
-  animation: breathe 6s ease-in-out infinite;
 }
 
 .phase-idle-resident #hud {
-  opacity: 0.78;
+  opacity: 0.8;
 }
 
-.phase-warming #model {
-  color: var(--warn);
-}
 .phase-warming #hud {
   opacity: 1;
+  border-color: rgba(251, 191, 36, 0.3);
   box-shadow:
-    0 0 0 1px rgba(251, 191, 36, 0.25),
-    0 18px 40px rgba(0, 0, 0, 0.45);
+    0 0 0 1px rgba(251, 191, 36, 0.22),
+    0 0 26px rgba(251, 191, 36, 0.12),
+    0 20px 44px rgba(0, 0, 0, 0.5);
+}
+.phase-warming #model {
+  color: var(--warn);
 }
 
 .phase-generating #hud {
   opacity: 1;
+  border-color: rgba(34, 211, 238, 0.4);
   box-shadow:
-    0 0 0 1px rgba(34, 211, 238, 0.35),
-    0 0 28px rgba(34, 211, 238, 0.18),
-    0 18px 40px rgba(0, 0, 0, 0.45);
+    0 0 0 1px rgba(34, 211, 238, 0.32),
+    0 0 32px rgba(34, 211, 238, 0.2),
+    0 20px 44px rgba(0, 0, 0, 0.5);
 }
 .phase-generating #usd {
-  text-shadow: 0 0 26px rgba(34, 211, 238, 0.6);
+  text-shadow: 0 0 28px rgba(34, 211, 238, 0.6);
 }
 
-@keyframes breathe {
-  0%,
-  100% {
-    opacity: 0.42;
-  }
-  50% {
-    opacity: 0.62;
-  }
+/* Truncation is a correctness alarm, not a style: it overrides the phase. */
+body.truncated #hud {
+  border-color: rgba(251, 191, 36, 0.45);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .phase-idle-evicted #hud {
-    animation: none;
-  }
+/* Hovering or expanding always brings the HUD to full legibility. */
+body.expanded #hud,
+body.interactive #hud {
+  opacity: 1;
 }
+
+/*
+ * Deliberately no perpetual idle animation.
+ *
+ * An earlier build breathed the idle state with a 6s opacity keyframe. On a
+ * transparent always-on-top window that is a layered window, so DWM has to
+ * recomposite it against the desktop every frame, forever. Measured cost:
+ * gpu-process 6.19% -> 0.69% of a core and renderer 1.94% -> 0.13% simply by
+ * removing it. State changes still animate — those are one-shot transitions
+ * and effectively free — but at rest the HUD is completely static.
+ */

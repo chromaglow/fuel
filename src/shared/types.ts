@@ -100,4 +100,25 @@ export interface HudState {
   truncationWarning: boolean
   /** Effective context length of the resident model, if known. */
   contextLength: number | null
+  /** Daily budget target the centre ring fills toward, in USD. */
+  goalUsd: number
+}
+
+/** One row in the expanded panel's recent-task list. */
+export interface RecentEvent {
+  startedAt: number
+  status: string
+  promptTokens: number | null
+  evalTokens: number | null
+  tokPerSec: number | null
+  coldStart: boolean
+  truncated: boolean
+  numCtx: number | null
+}
+
+/** Persisted user preferences. */
+export interface Settings {
+  clickThrough: boolean
+  openAtLogin: boolean
+  goalUsd: number
 }

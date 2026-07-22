@@ -82,11 +82,19 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 ## Status
 
-**M1 complete** — the sensor layer works end to end. GPU telemetry and model residency stream at 1 Hz, the log tailer captures real inference events with exact token counts and timings, everything persists across restarts, and the HUD renders live state with the eviction countdown.
+**M2 complete** — the HUD is built out and click-through.
 
-Verified against Ollama's own API: on a 610-token generation the parser recorded `eval_ns` 9,480,608,000 — matching `eval_duration` exactly.
+- Canvas gauge: budget ring, tachometer arc with tick bezel, and a GPU-utilisation sparkline tucked inside the dial.
+- Hover to expand into a dense telemetry panel (per-phase VRAM, temp, watts, context size, eviction timer, and a recent-task list); the window grows and shrinks with it.
+- Click-through by default so it never intercepts a click meant for the window beneath; `Ctrl+Alt+I` or the tray toggles interactive (draggable) mode.
+- System-tray icon with show/hide, interactive toggle, move-to-display, and launch-at-login.
+- Six visual states — offline, evicted, resident, warming, generating, and a truncation alarm — with bloom on activity.
 
-Next: **M2** — the center ring, outer arc, click-through, tray icon, and the full set of visual states.
+**Idle cost: 1.51% of one core, 0.063% of total CPU** (24-core box), 363 MB. Getting there meant killing a perpetual CSS `breathe` keyframe that was forcing DWM to recomposite the layered window every frame — that one change dropped the GPU-process cost from 6.2% to 0.7% of a core.
+
+**M1 complete** — the sensor layer works end to end: 1 Hz GPU + model-residency telemetry, a log tailer that captures inference events with exact token counts (parser `eval_ns` matched Ollama's `eval_duration` to the nanosecond), and persistence across restarts.
+
+Next: **M3** — instrument the MCP shim (streaming + `num_ctx: 32768`), stand up the collector, and enable Claude Desktop offloading for the first time.
 
 ## License
 

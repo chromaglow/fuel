@@ -5,9 +5,12 @@ node_modules/
 # Build output
 dist/
 out/
-build/
 release/
 *.tsbuildinfo
+
+# electron-builder output lives here too, but keep the committed icon assets
+build/*
+!build/*.png
 
 # Electron
 .vite/

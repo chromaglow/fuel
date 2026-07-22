@@ -16,29 +16,26 @@
         <div id="status">connecting…</div>
       </header>
 
-      <section id="headline">
-        <div id="usd">≈ $0.00</div>
-        <div id="usd-label">budget preserved</div>
-        <div id="tokens">0 tok today</div>
-      </section>
-
-      <section id="rate">
-        <canvas id="spark" width="292" height="30"></canvas>
-        <div id="rate-row">
-          <span id="util">0%</span>
-          <span id="tps">— tok/s</span>
+      <div id="gauge-wrap">
+        <canvas id="gauge" width="240" height="240"></canvas>
+        <div id="center">
+          <div id="usd">≈&nbsp;$0.00</div>
+          <div id="usd-label">budget preserved</div>
+          <div id="tokens">0 tok</div>
         </div>
-      </section>
-
-      <section id="hw">
-        <span id="vram">⬡ —</span>
-        <span id="power">⬡ —</span>
-      </section>
+        <div id="tps">— tok/s</div>
+      </div>
 
       <footer>
-        <span id="tasks">0 tasks</span>
+        <span id="hw">⬡ —</span>
         <span id="ctx"></span>
       </footer>
+
+      <section id="panel" aria-hidden="true">
+        <div class="rows" id="panel-rows"></div>
+        <div class="sub">recent</div>
+        <div class="tasks" id="panel-tasks"></div>
+      </section>
     </main>
     <script type="module" src="./hud.ts"></script>
   </body>

@@ -1,10 +1,30 @@
-import { app, BrowserWindow, globalShortcut, ipcMain } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, type Tray } from 'electron'
 import { join } from 'node:path'
-import type { HudPhase, HudState, OffloadEvent, Sample } from '@shared/types'
-import { POLL_GPU_MS, POLL_TAGS_MS, UTIL_HISTORY_LEN } from '@shared/constants'
+import type {
+  HudPhase,
+  HudState,
+  OffloadEvent,
+  RecentEvent,
+  Sample,
+} from '@shared/types'
+import {
+  DEFAULT_DAILY_GOAL_USD,
+  POLL_GPU_MS,
+  POLL_TAGS_MS,
+  RECENT_EVENT_LIMIT,
+  UTIL_HISTORY_LEN,
+} from '@shared/constants'
 import { Store } from './db/index.js'
-import { createHudWindow } from './window.js'
-import { readGpu } from './sensors/nvidiaSmi.js'
+import {
+  createHudWindow,
+  isCursorOver,
+  listDisplays,
+  moveToDisplay,
+  setClickThrough,
+  setExpandedHeight,
+} from './window.js'
+import { createTray } from './tray.js'
+import { GpuMonitor } from './sensors/nvidiaSmi.js'
 import { pingOllama, readResident, readTags } from './sensors/ollamaApi.js'
 import { OllamaLogTailer } from './sensors/ollamaLog.js'
 import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
@@ -16,18 +36,73 @@ function dataDir(): string {
 
 let store: Store
 let win: BrowserWindow | null = null
+let tray: (Tray & { rebuild?: () => void }) | null = null
 let tailer: OllamaLogTailer | null = null
 let tick: NodeJS.Timeout | null = null
 let tagsTimer: NodeJS.Timeout | null = null
+let gpuMon: GpuMonitor | null = null
 
-/** Rolling sparkline buffer, oldest first. */
 let utilHistory: number[] = []
-/** Set by the log tailer when llama-server reports slot activity. */
 let logBusy = false
-/** Throughput of the most recently completed task. */
 let lastTokPerSec: number | null = null
 let truncationWarning = false
 let installedModels: string[] = []
+
+/** Throttle the "is Ollama up?" ping when no model is resident. */
+const PING_INTERVAL_MS = 5000
+let lastPingAt = 0
+let lastPingOk = false
+
+/** Interactive = click-through disabled, so the HUD can be dragged. */
+let interactive = false
+let goalUsd = DEFAULT_DAILY_GOAL_USD
+
+// ------------------------------------------------------------- settings
+
+function loadSettings(): void {
+  interactive = store.getMeta('ui.interactive') === '1'
+  const goal = Number(store.getMeta('ui.goalUsd'))
+  if (Number.isFinite(goal) && goal > 0) goalUsd = goal
+}
+
+// ---------------------------------------------------------- hover / expand
+
+let expanded = false
+let hoverTimer: NodeJS.Timeout | null = null
+let outsideTicks = 0
+
+/** Ticks outside the window before collapsing — stops edge flicker. */
+const COLLAPSE_GRACE_TICKS = 2
+const HOVER_POLL_MS = 180
+
+function setExpanded(next: boolean): void {
+  if (expanded === next || !win) return
+  expanded = next
+  setExpandedHeight(win, next)
+  win.webContents.send('fuel:expanded', next)
+}
+
+function startHoverWatch(): void {
+  hoverTimer = setInterval(() => {
+    if (!win || win.isDestroyed()) return
+    if (isCursorOver(win)) {
+      outsideTicks = 0
+      setExpanded(true)
+    } else if (expanded && ++outsideTicks >= COLLAPSE_GRACE_TICKS) {
+      setExpanded(false)
+    }
+  }, HOVER_POLL_MS)
+}
+
+function setInteractive(on: boolean): void {
+  interactive = on
+  store.setMeta('ui.interactive', on ? '1' : '0')
+  if (win) setClickThrough(win, !on)
+  win?.webContents.send('fuel:interactive', on)
+  tray?.rebuild?.()
+}
+
+// -------------------------------------------------------------- sampling
 
 function derivePhase(
   online: boolean,
@@ -45,13 +120,26 @@ function derivePhase(
 }
 
 async function collect(): Promise<void> {
-  const [gpu, resident] = await Promise.all([readGpu(), readResident()])
-
-  // readResident() returns null both when idle and when Ollama is down; ping
-  // only when we need to tell those apart.
-  const online = resident != null ? true : await pingOllama()
-
   const now = Date.now()
+
+  // GPU stats come from a long-lived `nvidia-smi --loop` process, so this is
+  // just a field read rather than a process spawn.
+  const gpu = gpuMon?.latest() ?? null
+  const resident = await readResident()
+
+  // readResident() returns null both when idle and when Ollama is down. A model
+  // being resident proves Ollama is up for free; only when nothing is loaded do
+  // we need a ping to tell "idle" from "down" — and that's the common desktop
+  // state, so throttle it to every 5 s rather than firing an HTTP call/second.
+  let online = resident != null
+  if (!online) {
+    if (now - lastPingAt >= PING_INTERVAL_MS) {
+      lastPingAt = now
+      lastPingOk = await pingOllama()
+    }
+    online = lastPingOk
+  }
+
   const util = gpu?.utilGpu ?? 0
 
   utilHistory.push(util)
@@ -92,6 +180,7 @@ async function collect(): Promise<void> {
     tokPerSec: lastTokPerSec,
     truncationWarning,
     contextLength: resident?.contextLength ?? null,
+    goalUsd,
   }
 
   win?.webContents.send('fuel:state', state)
@@ -109,6 +198,9 @@ function onOffloadEvent(e: OffloadEvent): void {
 }
 
 function startSensors(): void {
+  gpuMon = new GpuMonitor(1)
+  gpuMon.start()
+
   tailer = new OllamaLogTailer()
   tailer.on('event', onOffloadEvent)
   tailer.on('busy', (b) => {
@@ -129,12 +221,29 @@ function startSensors(): void {
   void refreshTags()
 }
 
+// ------------------------------------------------------------------- ipc
+
 function registerIpc(): void {
   ipcMain.handle('fuel:models', () => installedModels)
+
   ipcMain.handle('fuel:clear-truncation', () => {
     truncationWarning = false
     return true
   })
+
+  ipcMain.handle('fuel:recent-events', (): RecentEvent[] => {
+    return store.recentEvents(RECENT_EVENT_LIMIT).map((r) => ({
+      startedAt: Number(r.started_at),
+      status: String(r.status),
+      promptTokens: r.prompt_tokens != null ? Number(r.prompt_tokens) : null,
+      evalTokens: r.eval_tokens != null ? Number(r.eval_tokens) : null,
+      tokPerSec: tokensPerSecond(Number(r.eval_tokens ?? 0), Number(r.eval_ns ?? 0)),
+      coldStart: Number(r.cold_start) === 1,
+      truncated: Number(r.truncated) === 1,
+      numCtx: r.num_ctx != null ? Number(r.num_ctx) : null,
+    }))
+  })
+
   ipcMain.on('fuel:quit', () => app.quit())
 }
 
@@ -148,6 +257,7 @@ if (!app.requestSingleInstanceLock()) {
     const dir = dataDir()
     loadPricing(dir)
     store = new Store(join(dir, 'fuel.db'))
+    loadSettings()
 
     // Seed the sparkline from disk so a restart doesn't start visually blank.
     utilHistory = store.recentUtil(UTIL_HISTORY_LEN)
@@ -156,24 +266,55 @@ if (!app.requestSingleInstanceLock()) {
     win = createHudWindow(store)
     registerIpc()
     startSensors()
+    startHoverWatch()
 
-    // The window is frameless and hidden from the taskbar, so there is no
-    // affordance to close it. Until the M2 tray icon lands, these are the
-    // only escape hatches.
+    win.once('ready-to-show', () => setClickThrough(win!, !interactive))
+
+    tray = createTray(win, {
+      isInteractive: () => interactive,
+      setInteractive,
+      isOpenAtLogin: () => app.getLoginItemSettings().openAtLogin,
+      setOpenAtLogin: (on) =>
+        app.setLoginItemSettings({ openAtLogin: on, args: [] }),
+      moveToDisplay: (id) => win && moveToDisplay(win, store, id),
+      listDisplays: () => (win ? listDisplays(win) : []),
+    })
+
+    // Debug aid: capture what the window is actually painting, independent of
+    // z-order. Distinguishes "renderer is blank" from "something is on top".
+    const shot = process.env['FUEL_DEBUG_SHOT']
+    if (shot) {
+      setTimeout(() => {
+        void win?.webContents.capturePage().then(async (img) => {
+          const { writeFile } = await import('node:fs/promises')
+          await writeFile(shot, img.toPNG())
+          console.log('[fuel] captured page ->', shot, img.getSize())
+        })
+      }, Number(process.env['FUEL_DEBUG_SHOT_DELAY'] ?? 5000))
+    }
+
     globalShortcut.register('CommandOrControl+Alt+Q', () => app.quit())
+    globalShortcut.register('CommandOrControl+Alt+I', () =>
+      setInteractive(!interactive),
+    )
     globalShortcut.register('CommandOrControl+Alt+F', () => {
       if (!win) return
       win.isVisible() ? win.hide() : win.showInactive()
+      tray?.rebuild?.()
     })
   })
 
+  // The tray keeps the app alive with no visible window, so don't quit here.
   app.on('window-all-closed', () => app.quit())
 
   app.on('before-quit', () => {
     if (tick) clearInterval(tick)
     if (tagsTimer) clearInterval(tagsTimer)
+    if (hoverTimer) clearInterval(hoverTimer)
     tailer?.stop()
+    gpuMon?.stop()
     globalShortcut.unregisterAll()
+    tray?.destroy()
     store?.close()
   })
 }

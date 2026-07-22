@@ -30,5 +30,17 @@ export const SAMPLE_RETENTION_DAYS = 30
 /** Loopback ingest port for the Phase C collector (not used in M1). */
 export const COLLECTOR_PORT = 47113
 
-export const WINDOW_WIDTH = 340
-export const WINDOW_HEIGHT = 300
+export const WINDOW_WIDTH = 320
+/** Compact: header + 240px gauge + footer. */
+export const WINDOW_HEIGHT = 326
+/** Hover-expanded, with the dense telemetry panel revealed. */
+export const WINDOW_HEIGHT_EXPANDED = 552
+
+/**
+ * Daily budget-ring target in USD. The ring fills toward this; anything past
+ * it spills into the overflow ring rather than pinning. User-overridable.
+ */
+export const DEFAULT_DAILY_GOAL_USD = 2.0
+
+/** How many recent tasks the expanded panel lists. */
+export const RECENT_EVENT_LIMIT = 6

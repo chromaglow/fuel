@@ -203,6 +203,17 @@ export class Store {
     return Number(row?.n ?? 0) > 0
   }
 
+  /** Most recent tasks, newest first — feeds the expanded panel's list. */
+  recentEvents(limit: number): Array<Record<string, number | string | null>> {
+    return this.db
+      .prepare(
+        `SELECT started_at, status, prompt_tokens, eval_tokens, eval_ns,
+                cold_start, truncated, num_ctx
+         FROM events ORDER BY started_at DESC LIMIT ?`,
+      )
+      .all(limit) as Array<Record<string, number | string | null>>
+  }
+
   getMeta(key: string): string | null {
     const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as
       | Record<string, string>

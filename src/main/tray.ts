@@ -1,0 +1,79 @@
+import { app, Menu, nativeImage, Tray, type BrowserWindow } from 'electron'
+import { join } from 'node:path'
+import { existsSync } from 'node:fs'
+
+export interface TrayHandlers {
+  isInteractive: () => boolean
+  setInteractive: (on: boolean) => void
+  isOpenAtLogin: () => boolean
+  setOpenAtLogin: (on: boolean) => void
+  moveToDisplay: (displayId: number) => void
+  listDisplays: () => Array<{ id: number; label: string; current: boolean }>
+}
+
+function iconPath(): string {
+  // Packaged builds resolve against resources/; dev runs from the repo root.
+  const candidates = [
+    join(process.resourcesPath ?? '', 'build', 'tray-32.png'),
+    join(app.getAppPath(), 'build', 'tray-32.png'),
+    join(process.cwd(), 'build', 'tray-32.png'),
+  ]
+  return candidates.find((p) => p && existsSync(p)) ?? candidates[2]!
+}
+
+export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
+  const image = nativeImage
+    .createFromPath(iconPath())
+    .resize({ width: 16, height: 16 })
+  image.setTemplateImage(false)
+
+  const tray = new Tray(image)
+  tray.setToolTip('fuel — local offload telemetry')
+
+  const rebuild = (): void => {
+    const menu = Menu.buildFromTemplate([
+      {
+        label: win.isVisible() ? 'Hide HUD' : 'Show HUD',
+        click: () => {
+          win.isVisible() ? win.hide() : win.showInactive()
+          rebuild()
+        },
+      },
+      {
+        label: 'Interactive (click-through off)',
+        type: 'checkbox',
+        checked: h.isInteractive(),
+        accelerator: 'Ctrl+Alt+I',
+        click: (item) => h.setInteractive(item.checked),
+      },
+      { type: 'separator' },
+      {
+        label: 'Move to display',
+        submenu: h.listDisplays().map((d) => ({
+          label: d.label,
+          type: 'radio' as const,
+          checked: d.current,
+          click: () => h.moveToDisplay(d.id),
+        })),
+      },
+      {
+        label: 'Launch at login',
+        type: 'checkbox',
+        checked: h.isOpenAtLogin(),
+        click: (item) => h.setOpenAtLogin(item.checked),
+      },
+      { type: 'separator' },
+      { label: 'Quit fuel', accelerator: 'Ctrl+Alt+Q', click: () => app.quit() },
+    ])
+    tray.setContextMenu(menu)
+  }
+
+  rebuild()
+  // Left-click toggles visibility; the menu is on right-click.
+  tray.on('click', () => {
+    win.isVisible() ? win.hide() : win.showInactive()
+    rebuild()
+  })
+
+  return Object.assign(tray, { rebuild }) as Tray & { rebuild: () => void }
+}
