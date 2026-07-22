@@ -1,0 +1,46 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build output
+dist/
+out/
+build/
+release/
+*.tsbuildinfo
+
+# Electron
+.vite/
+
+# Local data — never commit telemetry or the database
+*.db
+*.db-shm
+*.db-wal
+spool.jsonl
+fuel-data/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# Backups written by the integration installer
+*.backup
+*.bak
