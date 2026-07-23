@@ -75,3 +75,34 @@ export const NUDGE_DEBOUNCE_MS = 300_000
 export const MECHANICAL_MIN_LINES = 4
 /** Rough chars-per-token for the est-tokens display. */
 export const CHARS_PER_TOKEN = 4
+
+// ---- Valve / proxy (M5, Phase B — opt-in, load-bearing) ----
+
+/**
+ * When the valve is engaged, fuel binds Ollama's usual port and the real
+ * Ollama is relocated to UPSTREAM via OLLAMA_HOST (see integrations/valve.mjs).
+ * Every local inference request then flows through fuel, which lets it force a
+ * context floor and pin keep_alive for *all* clients at once — including
+ * uninstrumented ones and Claude Desktop.
+ */
+export const PROXY_PORT = Number(process.env.FUEL_PROXY_PORT ?? 11434)
+export const PROXY_HOST = '127.0.0.1'
+/** Where the real Ollama listens once relocated. Reachable ⇒ safe to engage. */
+export const UPSTREAM_URL = process.env.FUEL_UPSTREAM_URL ?? 'http://127.0.0.1:11435'
+
+/** Watchdog probes the upstream this often (ms)... */
+export const PROXY_HEALTH_MS = 5000
+/** ...and this many consecutive misses drop the valve to a zero-parsing pipe. */
+export const PROXY_FAIL_THRESHOLD = 3
+
+/**
+ * keep_alive the valve pins when a client didn't set one, so the model doesn't
+ * evict after Ollama's default 5 min and pay the ~33 s cold start next request.
+ */
+export const PROXY_KEEP_ALIVE = '30m'
+
+/** Model the valve pre-warms on request. */
+export const DEFAULT_MODEL = 'qwen2.5-coder:14b'
+
+/** Hard cap on a buffered generation request body before we give up rewriting. */
+export const PROXY_MAX_BODY_BYTES = 64 * 1024 * 1024

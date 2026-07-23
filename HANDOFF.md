@@ -2,7 +2,7 @@
 
 The one document to read before picking this project back up. For the full design see [SPEC.md](./SPEC.md); for the pitch see [README.md](./README.md). This file is the *state of play* plus every trap already hit, so nobody re-derives them.
 
-Last updated: 2026-07-23 (end of M4).
+Last updated: 2026-07-23 (end of M5).
 
 ---
 
@@ -20,15 +20,17 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 | **M2 — HUD** | ✅ done | Canvas gauge (ring + arc + sparkline), hover-expand panel, click-through, tray, six states, idle CPU 1.5% |
 | **M3 — Cockpit** | ✅ done | Instrumented MCP shim (streaming + `num_ctx`), collector, reconciler dedup, installer, first tests |
 | **M4 — Nudge** | ✅ done | `PostToolUse` hook + classifier flagging delegatable inline work as "unburned fuel"; shadow-mode default |
-| **M5 — Valve** | ⬜ next | Opt-in reverse proxy in front of Ollama (pre-warm, forced ctx for all clients) |
+| **M5 — Valve** | ✅ done | Opt-in reverse proxy in front of Ollama: forces `num_ctx`/pins `keep_alive` for *all* clients, pre-warm, watchdog auto-bypass, `--unhook`; disabled by default |
 
-Everything through M4 is committed and pushed to `main` (https://github.com/chromaglow/fuel).
+Everything through M5 is committed to `main` (https://github.com/chromaglow/fuel); M1–M4 are pushed and **M5 is committed locally but not yet pushed**.
 
-## The one thing NOT done, on purpose
+## The two things NOT run, on purpose
 
-**The installer has not been run.** `node integrations/install.mjs status` is read-only and safe; `install` modifies your *live* Claude Code (`~/.claude.json`) and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`) configs. That's an outward-facing, hard-to-reverse change, so it waits for an explicit decision. Until it's run, the gauge only sees inference from the *old* uninstrumented shim (unattributed) and any manual `ollama` calls, and **no nudges fire** (the M4 hook isn't registered). Running `install` wires in: streaming + `num_ctx: 16384` + attribution, the nudge hook in `settings.json`, and — for the first time — Claude *Desktop* offloading. Every write is backed up; `uninstall` restores.
+Both are outward-facing, reversible-but-real system changes, so — like every milestone here — the *code* is complete and tested, but the live activation waits for an explicit decision.
 
-Run it with **Claude Code and Desktop closed** (it rewrites `.claude.json` via parse/stringify; a concurrent Claude write could clobber it).
+**1. The installer (M3/M4).** `node integrations/install.mjs status` is read-only and safe; `install` modifies your *live* Claude Code (`~/.claude.json`) and Claude Desktop (`%APPDATA%\Claude\claude_desktop_config.json`) configs. Until it's run, the gauge only sees inference from the *old* uninstrumented shim (unattributed) and any manual `ollama` calls, and **no nudges fire** (the M4 hook isn't registered). Running `install` wires in: streaming + `num_ctx: 16384` + attribution, the nudge hook in `settings.json`, and — for the first time — Claude *Desktop* offloading. Every write is backed up; `uninstall` restores. Run it with **Claude Code and Desktop closed** (it rewrites `.claude.json` via parse/stringify; a concurrent Claude write could clobber it).
+
+**2. The valve relocation (M5).** The valve is off by default and, unlike the monitor, is *load-bearing* when on — fuel sits in front of Ollama. Engaging it is two explicit steps: (a) `node integrations/valve.mjs hook` sets `OLLAMA_HOST=127.0.0.1:11435` (a persistent user env var) so Ollama moves off its default port; restart Ollama; then (b) tick **"Valve — force context, in-path"** in fuel's tray. fuel *refuses* to engage unless the upstream (`:11435`) is already answering, so it can never bind Ollama's port with nothing behind it. `node integrations/valve.mjs status` shows where things stand. Escape hatches: `valve.mjs unhook`, or GUI-independent `electron . --unhook` (both remove `OLLAMA_HOST`; restart Ollama after). The in-app watchdog also auto-drops to a zero-parsing byte pipe after 3 failed upstream health checks.
 
 ---
 
@@ -38,11 +40,13 @@ Run it with **Claude Code and Desktop closed** (it rewrites `.claude.json` via p
 npm install            # zero native deps — node:sqlite is built into Electron's Node
 npm run build          # electron-vite build → out/
 npx electron .         # or: npm run dev  (HMR)
-npm test               # 30 tests, node --test, no deps
+npm test               # 41 tests, node --test, no deps
 npm run typecheck      # tsc --noEmit
 node scripts/inspect.mjs        # dump what's been captured to the DB
 node scripts/make-icon.mjs      # regenerate tray/app icons (build/*.png)
 node integrations/install.mjs status   # check Claude wiring (read-only)
+node integrations/valve.mjs status     # check valve relocation (read-only)
+npx electron . --unhook                # emergency: undo the valve relocation, then exit
 ```
 
 Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow) and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
@@ -79,6 +83,10 @@ Read these before touching the relevant area — each cost real time to find.
 
 13. **The nudge classifier is deliberately eager-ish, and that's what shadow mode is for.** Two substantial mechanical reformats in the same session+dir already cross the threshold (each is +2). There's no historical ground truth (offloading never happened), so it ships in **shadow mode**: recorded + reviewable in the expanded panel, hidden from the compact count until calibrated. Don't hand-tune the weights without real data — flip to live from the tray once the review list looks right.
 
+14. **The valve only ever inspects two endpoints, and only the request body.** `POST /api/generate` and `/api/chat` are buffered (small — just the prompt), JSON-parsed, and enriched (num_ctx floor + keep_alive). *Everything else* — `/api/ps`, `/api/tags`, `/api/version`, embeddings, GETs — is a pure streaming byte pipe. Responses are *always* streamed chunk-by-chunk, so NDJSON token streams are never buffered. Three layers keep it from ever breaking inference: a per-request try/catch that forwards the client's original bytes on any parse/rewrite error (SPEC §4.3 #2); the watchdog's global bypass after 3 failed health checks (#3); and the enable guard that refuses to bind unless the relocated Ollama is already answering on `:11435`. The context-forcing logic (`rewriteBody`) and the bypass state machine (`Watchdog`) are pure and unit-tested; the HTTP wiring was verified on the wire against a fake upstream (floor applied, passthrough clean, bypass verbatim).
+
+15. **`node --import` needs a `file://` URL, not a bare Windows path.** Only relevant to ad-hoc test harnesses: `--import "C:\...\hook.mjs"` fails with `ERR_UNSUPPORTED_ESM_URL_SCHEME` (protocol `c:`). Use `--import "file:///C:/.../hook.mjs"`, or a repo-relative path like the real test command does (`--import ./test/register.mjs`). The script *path* argument is fine either way; only `--import` is picky.
+
 ---
 
 ## Key decisions (the why)
@@ -109,12 +117,14 @@ src/main/                    Electron main: sensors/, collector/, nudge/, db/, w
   sensors/                   nvidiaSmi (GpuMonitor), ollamaApi, ollamaLog (tailer + parser)
   collector/                 server (:47113, /ingest + /hook), reconcile (dedup), spool
   nudge/                     classify (feature extraction + burst scorer + NudgeClassifier)
+  proxy/                     M5 valve: rewrite (pure ctx/keep_alive forcing), watchdog (bypass FSM), server (Valve HTTP proxy)
 src/renderer/                HUD: gauges/, hud.ts (event-driven render loop), panel, theme
 src/shared/                  types + constants shared across processes
 integrations/ollama_mcp.py   the fuel-instrumented MCP shim (installed by install.mjs)
 integrations/hook.cjs        PostToolUse nudge hook (M4) — .cjs, not .js (see trap #12)
 integrations/install.mjs     status | install | uninstall — wires shim + hook into Claude (live configs)
-test/                        node --test suites (reconcile, parse, collector, classify) + alias hook
+integrations/valve.mjs       status | hook | unhook — relocates Ollama to :11435 via OLLAMA_HOST (M5)
+test/                        node --test suites (reconcile, parse, collector, classify, rewrite, watchdog) + alias hook
 scripts/                     inspect.mjs (DB dump), make-icon.mjs (PNG gen)
 config/pricing.json          Claude API rates for the budget estimate
 ```
@@ -123,6 +133,10 @@ config/pricing.json          Claude API rates for the budget estimate
 
 ## Immediate next steps to resume
 
-1. `npm install && npm run build && npx electron .` — confirm the HUD is on screen. `npm test` should show 30 passing.
-2. Decide whether to run `node integrations/install.mjs install` (goes live: installs the shim + nudge hook, tags Claude Code, enables Claude Desktop — modifies live configs; see "The one thing NOT done"). Run with Claude closed.
-3. Start **M5 — the Valve** (`src/main/proxy/`): an opt-in reverse proxy that binds `127.0.0.1:11434` with Ollama relocated to `11435` via `OLLAMA_HOST`. Lets fuel force `num_ctx` for *all* clients, pin `keep_alive`, and pre-warm away the ~33 s cold start. **This is the load-bearing, risky milestone** — SPEC §4.3 has the mandatory mitigations (watchdog, transparent passthrough on error, auto-bypass after 3 failed health checks, a `--unhook` CLI escape hatch). Ships disabled by default.
+All five milestones are implemented. What's left is *activation* and hardening, not new milestones.
+
+1. `npm install && npm run build && npx electron .` — confirm the HUD is on screen. `npm test` should show **41 passing**.
+2. **Push M5.** It's committed locally (`git push` to publish).
+3. Decide whether to run `node integrations/install.mjs install` (goes live: installs the shim + nudge hook, tags Claude Code, enables Claude Desktop — modifies live configs). Run with Claude closed. **This is the highest-value unrun step** — until it runs, the gauge stays near zero, which is the whole problem fuel exists to attack.
+4. Optionally engage the valve: `node integrations/valve.mjs hook` → restart Ollama → tick the tray toggle. Run it in-path for a week; the M5 exit criterion is *zero* inference failures attributable to fuel. Watch for cold-start rate dropping (keep_alive pinned) and truncation staying at zero (num_ctx forced for every client).
+5. Remaining gaps worth a pass: **proxy attribution** (the valve currently forces ctx but doesn't emit per-client `source:'proxy'` events — the log tailer still counts all inference, and wiring proxy events would need reconciler care to avoid double-counting the shim); packaging (`electron-builder` → NSIS, SPEC §8); and the live per-token throughput stream (currently last-completed only).

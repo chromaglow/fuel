@@ -1,5 +1,6 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, type Tray } from 'electron'
 import { join } from 'node:path'
+import { execFileSync } from 'node:child_process'
 import type {
   HudPhase,
   HudState,
@@ -33,7 +34,10 @@ import { Collector } from './collector/server.js'
 import { Reconciler } from './collector/reconcile.js'
 import { drainSpool } from './collector/spool.js'
 import { NudgeClassifier } from './nudge/classify.js'
+import { Valve } from './proxy/server.js'
+import { Watchdog } from './proxy/watchdog.js'
 import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
+import { UPSTREAM_URL } from '@shared/constants'
 
 function dataDir(): string {
   const local = process.env.LOCALAPPDATA
@@ -50,6 +54,8 @@ let gpuMon: GpuMonitor | null = null
 let collector: Collector | null = null
 let reconciler: Reconciler | null = null
 let classifier: NudgeClassifier | null = null
+let valve: Valve | null = null
+let watchdog: Watchdog | null = null
 
 /**
  * Nudge surfacing. Defaults to 'shadow': nudges are recorded and reviewable in
@@ -75,6 +81,14 @@ let lastPingOk = false
 let interactive = false
 let goalUsd = DEFAULT_DAILY_GOAL_USD
 
+/**
+ * The valve (M5, Phase B) is load-bearing and off by default. It only makes
+ * sense once Ollama has been relocated to the upstream port (integrations/
+ * valve.mjs hook); engaging it before that would bind Ollama's port with
+ * nothing behind it. So enabling is guarded on the upstream actually answering.
+ */
+let proxyEnabled = false
+
 // ------------------------------------------------------------- settings
 
 function loadSettings(): void {
@@ -85,10 +99,82 @@ function loadSettings(): void {
   if (mode === 'shadow' || mode === 'live' || mode === 'off') nudgeMode = mode
 }
 
+/** Whether the valve was engaged last session; re-engaged (guarded) on launch. */
+function proxyWasEnabled(): boolean {
+  return store.getMeta('proxy.enabled') === '1'
+}
+
 function setNudgeMode(mode: NudgeMode): void {
   nudgeMode = mode
   store.setMeta('nudge.mode', mode)
   tray?.rebuild?.()
+}
+
+// ------------------------------------------------------------- valve (M5)
+
+/** Is the real Ollama answering on the upstream port? ⇒ safe to engage. */
+async function upstreamReachable(): Promise<boolean> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => ctrl.abort(), 2000)
+  try {
+    const res = await fetch(`${UPSTREAM_URL}/api/version`, { signal: ctrl.signal })
+    return res.ok
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+function stopValve(): void {
+  watchdog?.stop()
+  watchdog = null
+  valve?.stop()
+  valve = null
+}
+
+/**
+ * Engage or release the valve. Enabling is refused unless the upstream is
+ * already reachable, so fuel can never bind Ollama's port with nothing behind
+ * it. A late EADDRINUSE (Ollama still squatting the port) tears back down.
+ */
+async function setProxyEnabled(on: boolean): Promise<boolean> {
+  if (on === proxyEnabled && (valve != null) === on) return proxyEnabled
+
+  if (!on) {
+    stopValve()
+    proxyEnabled = false
+    store.setMeta('proxy.enabled', '0')
+    tray?.rebuild?.()
+    return false
+  }
+
+  if (!(await upstreamReachable())) {
+    console.warn(
+      `[fuel] refusing to engage valve: ${UPSTREAM_URL} not answering. ` +
+        `Relocate Ollama first (node integrations/valve.mjs hook).`,
+    )
+    tray?.rebuild?.()
+    return false
+  }
+
+  valve = new Valve((err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error('[fuel] valve port busy — is Ollama still on it? Disabling valve.')
+      stopValve()
+      proxyEnabled = false
+      store.setMeta('proxy.enabled', '0')
+      tray?.rebuild?.()
+    }
+  })
+  valve.start()
+  watchdog = new Watchdog((bypassed) => valve?.setBypass(bypassed))
+  watchdog.start()
+
+  proxyEnabled = true
+  store.setMeta('proxy.enabled', '1')
+  tray?.rebuild?.()
+  return true
 }
 
 // ---------------------------------------------------------- hover / expand
@@ -299,6 +385,21 @@ function registerIpc(): void {
   ipcMain.on('fuel:quit', () => app.quit())
 }
 
+// GUI-independent escape hatch (SPEC §4.3 mitigation #4). `electron . --unhook`
+// removes the OLLAMA_HOST relocation and exits, so a wedged valve can always be
+// undone from the command line without opening fuel. Restart Ollama afterwards.
+if (process.argv.includes('--unhook')) {
+  try {
+    execFileSync('reg', ['delete', 'HKCU\\Environment', '/v', 'OLLAMA_HOST', '/f'], {
+      stdio: 'ignore',
+    })
+    console.log('[fuel] OLLAMA_HOST removed — restart Ollama to return it to :11434')
+  } catch {
+    console.log('[fuel] OLLAMA_HOST was not set; nothing to undo')
+  }
+  process.exit(0)
+}
+
 // A second instance would double-write samples and fight over the window slot.
 if (!app.requestSingleInstanceLock()) {
   app.quit()
@@ -339,7 +440,14 @@ if (!app.requestSingleInstanceLock()) {
       listDisplays: () => (win ? listDisplays(win) : []),
       nudgeMode: () => nudgeMode,
       setNudgeMode,
+      isProxyEnabled: () => proxyEnabled,
+      setProxyEnabled: (on) => void setProxyEnabled(on),
+      prewarm: () => valve?.prewarm(),
     })
+
+    // Re-engage the valve if it was on last session — guarded on the upstream
+    // actually answering, so a machine that isn't relocated just stays off.
+    if (proxyWasEnabled()) void setProxyEnabled(true)
 
     // Debug aid: capture what the window is actually painting, independent of
     // z-order. Distinguishes "renderer is blank" from "something is on top".
@@ -375,6 +483,7 @@ if (!app.requestSingleInstanceLock()) {
     tailer?.stop()
     gpuMon?.stop()
     collector?.stop()
+    stopValve()
     reconciler?.flushAll()
     globalShortcut.unregisterAll()
     tray?.destroy()

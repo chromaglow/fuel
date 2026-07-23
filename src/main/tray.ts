@@ -13,6 +13,9 @@ export interface TrayHandlers {
   listDisplays: () => Array<{ id: number; label: string; current: boolean }>
   nudgeMode: () => NudgeMode
   setNudgeMode: (mode: NudgeMode) => void
+  isProxyEnabled: () => boolean
+  setProxyEnabled: (on: boolean) => void
+  prewarm: () => void
 }
 
 function iconPath(): string {
@@ -74,6 +77,26 @@ export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
           click: () => h.setNudgeMode(mode),
         })),
       },
+      { type: 'separator' },
+      {
+        label: 'Valve — force context, in-path (advanced)',
+        type: 'checkbox',
+        checked: h.isProxyEnabled(),
+        // Load-bearing once on: fuel sits in front of Ollama. Requires Ollama
+        // relocated first (node integrations/valve.mjs hook); enabling is a
+        // no-op with a warning until the upstream answers. rebuild() reflects
+        // whether it actually engaged.
+        click: () => {
+          h.setProxyEnabled(!h.isProxyEnabled())
+          rebuild()
+        },
+      },
+      {
+        label: 'Pre-warm model now',
+        enabled: h.isProxyEnabled(),
+        click: () => h.prewarm(),
+      },
+      { type: 'separator' },
       {
         label: 'Launch at login',
         type: 'checkbox',
