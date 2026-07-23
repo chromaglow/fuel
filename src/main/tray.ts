@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 
 import type { NudgeMode } from '@shared/types'
+import type { GateMode } from './nudge/gate.js'
+import type { Aggressiveness } from './nudge/sorter.js'
 
 export interface TrayHandlers {
   isInteractive: () => boolean
@@ -13,9 +15,26 @@ export interface TrayHandlers {
   listDisplays: () => Array<{ id: number; label: string; current: boolean }>
   nudgeMode: () => NudgeMode
   setNudgeMode: (mode: NudgeMode) => void
+  tollMode: () => GateMode
+  setTollMode: (mode: GateMode) => void
+  tollLevel: () => Aggressiveness
+  setTollLevel: (level: Aggressiveness) => void
   isProxyEnabled: () => boolean
   setProxyEnabled: (on: boolean) => void
   prewarm: () => void
+}
+
+const TOLL_MODE_LABEL: Record<GateMode, string> = {
+  observe: 'Observe (record only)',
+  guard: 'Guard (advise redirects)',
+  off: 'Off',
+}
+
+const TOLL_LEVEL_LABEL: Record<Aggressiveness, string> = {
+  careful: 'Careful',
+  normal: 'Normal',
+  eager: 'Eager',
+  off: 'Off',
 }
 
 function iconPath(): string {
@@ -76,6 +95,27 @@ export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
           checked: h.nudgeMode() === mode,
           click: () => h.setNudgeMode(mode),
         })),
+      },
+      {
+        label: 'Toll booth',
+        submenu: [
+          ...(['observe', 'guard', 'off'] as const).map((mode) => ({
+            label: TOLL_MODE_LABEL[mode],
+            type: 'radio' as const,
+            checked: h.tollMode() === mode,
+            click: () => h.setTollMode(mode),
+          })),
+          { type: 'separator' as const },
+          {
+            label: 'Sensitivity',
+            submenu: (['careful', 'normal', 'eager'] as const).map((level) => ({
+              label: TOLL_LEVEL_LABEL[level],
+              type: 'radio' as const,
+              checked: h.tollLevel() === level,
+              click: () => h.setTollLevel(level),
+            })),
+          },
+        ],
       },
       { type: 'separator' },
       {

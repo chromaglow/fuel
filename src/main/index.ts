@@ -130,6 +130,18 @@ function setNudgeMode(mode: NudgeMode): void {
   tray?.rebuild?.()
 }
 
+function setTollMode(mode: GateMode): void {
+  tollMode = mode
+  store.setMeta('toll.mode', mode)
+  tray?.rebuild?.()
+}
+
+function setTollLevel(level: Aggressiveness): void {
+  tollLevel = level
+  store.setMeta('toll.level', level)
+  tray?.rebuild?.()
+}
+
 // ------------------------------------------------------------- valve (M5)
 
 /** Is the real Ollama answering on the upstream port? ⇒ safe to engage. */
@@ -472,6 +484,10 @@ if (!app.requestSingleInstanceLock()) {
       listDisplays: () => (win ? listDisplays(win) : []),
       nudgeMode: () => nudgeMode,
       setNudgeMode,
+      tollMode: () => tollMode,
+      setTollMode,
+      tollLevel: () => tollLevel,
+      setTollLevel,
       isProxyEnabled: () => proxyEnabled,
       setProxyEnabled: (on) => void setProxyEnabled(on),
       prewarm: () => valve?.prewarm(),
