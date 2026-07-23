@@ -2,6 +2,8 @@ import { app, Menu, nativeImage, Tray, type BrowserWindow } from 'electron'
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 
+import type { NudgeMode } from '@shared/types'
+
 export interface TrayHandlers {
   isInteractive: () => boolean
   setInteractive: (on: boolean) => void
@@ -9,6 +11,8 @@ export interface TrayHandlers {
   setOpenAtLogin: (on: boolean) => void
   moveToDisplay: (displayId: number) => void
   listDisplays: () => Array<{ id: number; label: string; current: boolean }>
+  nudgeMode: () => NudgeMode
+  setNudgeMode: (mode: NudgeMode) => void
 }
 
 function iconPath(): string {
@@ -54,6 +58,20 @@ export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
           type: 'radio' as const,
           checked: d.current,
           click: () => h.moveToDisplay(d.id),
+        })),
+      },
+      {
+        label: 'Nudges',
+        submenu: (['live', 'shadow', 'off'] as const).map((mode) => ({
+          label:
+            mode === 'live'
+              ? 'Live (show unburned fuel)'
+              : mode === 'shadow'
+                ? 'Shadow (record only, calibrating)'
+                : 'Off',
+          type: 'radio' as const,
+          checked: h.nudgeMode() === mode,
+          click: () => h.setNudgeMode(mode),
         })),
       },
       {

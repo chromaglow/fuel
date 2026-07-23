@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import type {
   HudPhase,
   HudState,
+  Nudge,
+  NudgeMode,
   OffloadEvent,
   RecentEvent,
   Sample,
@@ -30,6 +32,7 @@ import { OllamaLogTailer } from './sensors/ollamaLog.js'
 import { Collector } from './collector/server.js'
 import { Reconciler } from './collector/reconcile.js'
 import { drainSpool } from './collector/spool.js'
+import { NudgeClassifier } from './nudge/classify.js'
 import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
 
 function dataDir(): string {
@@ -46,6 +49,16 @@ let tagsTimer: NodeJS.Timeout | null = null
 let gpuMon: GpuMonitor | null = null
 let collector: Collector | null = null
 let reconciler: Reconciler | null = null
+let classifier: NudgeClassifier | null = null
+
+/**
+ * Nudge surfacing. Defaults to 'shadow': nudges are recorded and reviewable in
+ * the expanded panel, but the compact HUD count stays hidden until the
+ * heuristics have been calibrated against real activity (there's no historical
+ * ground truth — offloading has never actually happened). Flip to 'live' from
+ * the tray once the classifications look trustworthy.
+ */
+let nudgeMode: NudgeMode = 'shadow'
 
 let utilHistory: number[] = []
 let logBusy = false
@@ -68,6 +81,14 @@ function loadSettings(): void {
   interactive = store.getMeta('ui.interactive') === '1'
   const goal = Number(store.getMeta('ui.goalUsd'))
   if (Number.isFinite(goal) && goal > 0) goalUsd = goal
+  const mode = store.getMeta('nudge.mode')
+  if (mode === 'shadow' || mode === 'live' || mode === 'off') nudgeMode = mode
+}
+
+function setNudgeMode(mode: NudgeMode): void {
+  nudgeMode = mode
+  store.setMeta('nudge.mode', mode)
+  tray?.rebuild?.()
 }
 
 // ---------------------------------------------------------- hover / expand
@@ -186,6 +207,8 @@ async function collect(): Promise<void> {
     truncationWarning,
     contextLength: resident?.contextLength ?? null,
     goalUsd,
+    unburnedToday: nudgeMode === 'off' ? 0 : store.todayNudgeCount(),
+    nudgeMode,
   }
 
   win?.webContents.send('fuel:state', state)
@@ -212,8 +235,18 @@ function startSensors(): void {
 
   reconciler = new Reconciler(commitEvent)
 
-  // Phase C: the MCP shim POSTs richer, attributed events here.
-  collector = new Collector((e) => reconciler?.onMcp(e))
+  // The nudge engine watches tool activity for delegatable work Claude did
+  // inline. In 'off' mode it isn't even constructed.
+  if (nudgeMode !== 'off') {
+    classifier = new NudgeClassifier((n) => store.insertNudge(n))
+  }
+
+  // Phase C: the MCP shim POSTs attributed events (/ingest); the PostToolUse
+  // hook POSTs tool actions (/hook).
+  collector = new Collector(
+    (e) => reconciler?.onMcp(e),
+    (h) => classifier?.onEvent(h),
+  )
   collector.start()
 
   // Phase A: the log tailer sees every inference but can't attribute it. The
@@ -261,6 +294,8 @@ function registerIpc(): void {
     }))
   })
 
+  ipcMain.handle('fuel:recent-nudges', (): Nudge[] => store.recentNudges(RECENT_EVENT_LIMIT))
+
   ipcMain.on('fuel:quit', () => app.quit())
 }
 
@@ -302,6 +337,8 @@ if (!app.requestSingleInstanceLock()) {
         app.setLoginItemSettings({ openAtLogin: on, args: [] }),
       moveToDisplay: (id) => win && moveToDisplay(win, store, id),
       listDisplays: () => (win ? listDisplays(win) : []),
+      nudgeMode: () => nudgeMode,
+      setNudgeMode,
     })
 
     // Debug aid: capture what the window is actually painting, independent of

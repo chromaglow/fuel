@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { HudState, RecentEvent } from '../shared/types.js'
+import type { HudState, Nudge, RecentEvent } from '../shared/types.js'
 
 /** The entire surface the renderer is allowed to touch. */
 const api = {
@@ -21,6 +21,9 @@ const api = {
   },
   recentEvents(): Promise<RecentEvent[]> {
     return ipcRenderer.invoke('fuel:recent-events')
+  },
+  recentNudges(): Promise<Nudge[]> {
+    return ipcRenderer.invoke('fuel:recent-nudges')
   },
   models(): Promise<string[]> {
     return ipcRenderer.invoke('fuel:models')

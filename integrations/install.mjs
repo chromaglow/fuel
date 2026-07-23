@@ -35,8 +35,13 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 
 const SHIM_SRC = join(HERE, 'ollama_mcp.py')
 const SHIM_DEST = join(HOME, '.claude', 'ollama_mcp.py')
+const HOOK_SRC = join(HERE, 'hook.cjs')
+const HOOK_DEST = join(HOME, '.claude', 'fuel-hook.cjs')
 const CODE_CONFIG = join(HOME, '.claude.json')
+const CODE_SETTINGS = join(HOME, '.claude', 'settings.json')
 const DESKTOP_CONFIG = join(APPDATA, 'Claude', 'claude_desktop_config.json')
+
+const HOOK_MATCHER = 'Write|Edit|MultiEdit|mcp__ollama-coder__local_coding_task'
 
 /** Marker line proving the installed shim is the instrumented one. */
 const SHIM_MARKER = 'fuel-instrumented'
@@ -75,6 +80,16 @@ function codeStatus() {
     hasServer: Boolean(srv),
     tagged: srv?.env?.FUEL_CLIENT === 'claude-code',
   }
+}
+
+function hookStatus() {
+  if (!existsSync(CODE_SETTINGS)) return { present: false }
+  const cfg = readJson(CODE_SETTINGS)
+  const posts = cfg.hooks?.PostToolUse ?? []
+  const registered = posts.some((entry) =>
+    (entry.hooks ?? []).some((h) => typeof h.command === 'string' && h.command.includes('fuel-hook')),
+  )
+  return { present: true, registered, installed: existsSync(HOOK_DEST) }
 }
 
 function desktopStatus() {
@@ -116,7 +131,15 @@ function status() {
         : yellow('present, untagged')
   console.log(`  claude desktop      ${deskLabel}  ${dim(DESKTOP_CONFIG)}`)
 
-  const done = shim && code.tagged && (desk.present ? desk.tagged : true)
+  const hook = hookStatus()
+  const hookLabel = !hook.present
+    ? red('settings.json missing')
+    : hook.registered && hook.installed
+      ? green('registered')
+      : yellow('nudge hook not registered')
+  console.log(`  nudge hook (M4)     ${hookLabel}  ${dim(CODE_SETTINGS)}`)
+
+  const done = shim && code.tagged && hook.registered && (desk.present ? desk.tagged : true)
   console.log(
     `\n  ${done ? green('fully wired') : yellow('run `install` to wire everything')}\n`,
   )
@@ -184,6 +207,36 @@ function install() {
     console.log(yellow(`  desktop config not found at ${DESKTOP_CONFIG}; skipping`))
   }
 
+  // 4. The M4 nudge hook: install the script and register it in settings.json.
+  if (existsSync(HOOK_SRC)) {
+    copyFileSync(HOOK_SRC, HOOK_DEST)
+    const cfg = existsSync(CODE_SETTINGS) ? readJson(CODE_SETTINGS) : {}
+    cfg.hooks = cfg.hooks ?? {}
+    cfg.hooks.PostToolUse = cfg.hooks.PostToolUse ?? []
+
+    const already = cfg.hooks.PostToolUse.some((entry) =>
+      (entry.hooks ?? []).some(
+        (h) => typeof h.command === 'string' && h.command.includes('fuel-hook'),
+      ),
+    )
+    if (already) {
+      console.log(`  nudge hook               ${dim('already registered')}`)
+    } else {
+      if (existsSync(CODE_SETTINGS)) {
+        const b = backup(CODE_SETTINGS)
+        console.log(`  backed up settings.json  ${dim(b)}`)
+      }
+      // node on PATH runs the CommonJS hook. Quote the path for spaces.
+      const command = `node "${HOOK_DEST}"`
+      cfg.hooks.PostToolUse.push({
+        matcher: HOOK_MATCHER,
+        hooks: [{ type: 'command', command, timeout: 5 }],
+      })
+      writeJson(CODE_SETTINGS, cfg)
+      console.log(`  registered nudge hook    ${green('PostToolUse')}`)
+    }
+  }
+
   console.log(
     `\n  ${green('done')} — restart Claude Code / Desktop to pick up the change.\n`,
   )
@@ -201,7 +254,7 @@ function latestBackup(path) {
 
 function uninstall() {
   console.log('\nrestoring from the most recent fuel backups\n')
-  for (const target of [SHIM_DEST, CODE_CONFIG, DESKTOP_CONFIG]) {
+  for (const target of [SHIM_DEST, CODE_CONFIG, CODE_SETTINGS, DESKTOP_CONFIG]) {
     const b = latestBackup(target)
     if (b) {
       copyFileSync(b, target)

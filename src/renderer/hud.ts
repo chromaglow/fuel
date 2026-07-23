@@ -1,10 +1,10 @@
-import type { HudState, RecentEvent } from '../shared/types.js'
+import type { HudState, Nudge, RecentEvent } from '../shared/types.js'
 import { TOK_PER_SEC_REDLINE, UTIL_HISTORY_LEN } from '../shared/constants.js'
 import { GAUGE_SIZE, lerp } from './theme.js'
 import { drawRing } from './gauges/ring.js'
 import { drawArc } from './gauges/arc.js'
 import { drawSparkline } from './gauges/sparkline.js'
-import { renderPanelRows, renderPanelTasks } from './panel.js'
+import { renderPanelNudges, renderPanelRows, renderPanelTasks } from './panel.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T
@@ -17,8 +17,11 @@ const el = {
   tps: $('tps'),
   hw: $('hw'),
   ctx: $('ctx'),
+  unburned: $('unburned'),
+  nudgeHeading: $('nudge-heading'),
   panelRows: $('panel-rows'),
   panelTasks: $('panel-tasks'),
+  panelNudges: $('panel-nudges'),
   gauge: $<HTMLCanvasElement>('gauge'),
 }
 
@@ -191,6 +194,14 @@ function render(s: HudState): void {
     ? `⬡ ${(s.gpu.memUsedMb / 1024).toFixed(1)}/${(s.gpu.memTotalMb / 1024).toFixed(0)} GB · ${Math.round(s.gpu.powerW)} W · ${s.gpu.tempC}°C`
     : '⬡ no gpu'
 
+  // Unburned fuel: only surfaced in live mode. Shadow keeps it out of the
+  // compact HUD (it's still reviewable in the expanded panel) until the
+  // heuristics are trusted.
+  el.unburned.textContent =
+    s.nudgeMode === 'live' && s.unburnedToday > 0
+      ? `${s.unburnedToday} unburned`
+      : ''
+
   if (s.truncationWarning) {
     el.ctx.textContent = 'truncated ⚠'
     el.ctx.className = 'warn'
@@ -225,9 +236,18 @@ function render(s: HudState): void {
 window.fuel.onExpanded(async (next) => {
   document.body.classList.toggle('expanded', next)
   if (!next) return
-  if (state) renderPanelRows(el.panelRows, state)
-  const events: RecentEvent[] = await window.fuel.recentEvents()
+  if (state) {
+    renderPanelRows(el.panelRows, state)
+    // Mark the nudge section as shadow so it's clear the count is being
+    // withheld from the compact HUD during calibration.
+    el.nudgeHeading.classList.toggle('shadow', state.nudgeMode === 'shadow')
+  }
+  const [events, nudges]: [RecentEvent[], Nudge[]] = await Promise.all([
+    window.fuel.recentEvents(),
+    window.fuel.recentNudges(),
+  ])
   renderPanelTasks(el.panelTasks, events)
+  renderPanelNudges(el.panelNudges, nudges)
 })
 
 window.fuel.onInteractive((on) => {

@@ -188,6 +188,34 @@ body:not(.expanded) footer {
   color: var(--good);
 }
 
+/* Unburned-fuel counter: a soft amber, never alarming. Hidden unless live
+   mode has something to show. */
+#unburned {
+  color: var(--warn);
+  opacity: 0.85;
+}
+#unburned:empty {
+  display: none;
+}
+
+/* Nudge list styling in the expanded panel. */
+#panel .nudge {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: #b0806a;
+}
+#panel .nudge .sig {
+  color: #6b7280;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#nudge-heading.shadow::after {
+  content: " · shadow";
+  color: #475569;
+}
+
 /* ---------- expanded panel ---------- */
 
 #panel {

@@ -19,8 +19,8 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 | **M1 — Sensor** | ✅ done | 1 Hz GPU + model-residency telemetry, `server.log` tailer, SQLite persistence, live HUD |
 | **M2 — HUD** | ✅ done | Canvas gauge (ring + arc + sparkline), hover-expand panel, click-through, tray, six states, idle CPU 1.5% |
 | **M3 — Cockpit** | ✅ done | Instrumented MCP shim (streaming + `num_ctx`), collector, reconciler dedup, installer, first tests |
-| **M4 — Nudge** | ⬜ next | `PostToolUse` hook that flags delegatable work Claude did inline, as "unburned fuel" |
-| **M5 — Valve** | ⬜ later | Opt-in reverse proxy in front of Ollama (pre-warm, forced ctx for all clients) |
+| **M4 — Nudge** | ✅ done | `PostToolUse` hook + classifier flagging delegatable inline work as "unburned fuel"; shadow-mode default |
+| **M5 — Valve** | ⬜ next | Opt-in reverse proxy in front of Ollama (pre-warm, forced ctx for all clients) |
 
 Everything through M3 is committed and pushed to `main` (https://github.com/chromaglow/fuel).
 
@@ -74,6 +74,10 @@ Read these before touching the relevant area — each cost real time to find.
 10. **Prefix caching makes the log undercount prompt tokens.** llama-server reports only prompt tokens it *evaluated* (44 reported as 18 on a cache hit). The log-only path undercounts input; the MCP path reads `prompt_eval_count` from the API and is authoritative. Documented in `ollamaLog.ts`.
 
 11. **Node's test runner: two gotchas.** Parameter properties (`constructor(private x)`) need `--experimental-transform-types`, not the default strip-only mode. And the `@shared/*` build alias needs a resolve hook (`test/alias-hook.mjs` + `test/register.mjs`) since plain Node doesn't read tsconfig paths.
+
+12. **The hook must be `.cjs`, not `.js`.** The repo's `package.json` has `"type": "module"`, so a `.js` hook using `require()` throws `require is not defined in ES module scope` when run in-repo. `integrations/hook.cjs` is unambiguously CommonJS wherever it's installed. Caught by piping a real Claude-Code stdin payload through it.
+
+13. **The nudge classifier is deliberately eager-ish, and that's what shadow mode is for.** Two substantial mechanical reformats in the same session+dir already cross the threshold (each is +2). There's no historical ground truth (offloading never happened), so it ships in **shadow mode**: recorded + reviewable in the expanded panel, hidden from the compact count until calibrated. Don't hand-tune the weights without real data — flip to live from the tray once the review list looks right.
 
 ---
 

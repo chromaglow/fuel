@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { _toEvent } from '../src/main/collector/server.ts'
+import { _toEvent, _toHookEvent } from '../src/main/collector/server.ts'
 
 test('a well-formed MCP body maps to an attributed mcp event', () => {
   const e = _toEvent({
@@ -55,4 +55,23 @@ test('missing timestamps fall back to now rather than null', () => {
 test('non-numeric token fields become null, not NaN', () => {
   const e = _toEvent({ eval_tokens: 'lots' as unknown as number })
   assert.equal(e?.evalTokens, null)
+})
+
+test('a hook body maps to a HookEvent; no tool is rejected', () => {
+  const h = _toHookEvent({
+    session_id: 's1',
+    cwd: '/proj',
+    tool: 'Edit',
+    file_path: '/proj/a.ts',
+    old_string: 'x',
+    new_string: 'y',
+  })
+  assert.ok(h)
+  assert.equal(h.tool, 'Edit')
+  assert.equal(h.filePath, '/proj/a.ts')
+  assert.equal(h.oldString, 'x')
+  assert.ok(h.ts > 0)
+
+  // A payload with no tool is not a usable action.
+  assert.equal(_toHookEvent({ session_id: 's1' }), null)
 })

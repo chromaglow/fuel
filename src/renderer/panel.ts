@@ -1,4 +1,4 @@
-import type { HudState, RecentEvent } from '../shared/types.js'
+import type { HudState, Nudge, RecentEvent } from '../shared/types.js'
 
 function row(k: string, v: string, cls = ''): string {
   return `<div class="k">${k}</div><div class="v ${cls}">${v}</div>`
@@ -96,6 +96,40 @@ export function renderPanelTasks(el: HTMLElement, events: RecentEvent[]): void {
         `<span>${tok} · ${rate}` +
         (flags ? ` <span class="flag">${flags}</span>` : '') +
         `</span></div>`
+      )
+    })
+    .join('')
+}
+
+const HINT_MAX = 22
+
+function shortHint(hint: string | null): string {
+  if (!hint) return ''
+  const base = hint.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/')
+  return base.length > HINT_MAX ? '…' + base.slice(-HINT_MAX) : base
+}
+
+/**
+ * Recent unburned-fuel detections. Reviewable during shadow-mode calibration —
+ * this list is how you sanity-check the classifier before trusting the count.
+ */
+export function renderPanelNudges(el: HTMLElement, nudges: Nudge[]): void {
+  if (nudges.length === 0) {
+    el.innerHTML = '<div class="empty">none detected</div>'
+    return
+  }
+  el.innerHTML = nudges
+    .map((n) => {
+      const time = new Date(n.ts).toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+      const est = n.estTokens != null ? `~${fmtTokens(n.estTokens)} tok` : ''
+      const sig = n.signals[0] ?? 'mechanical'
+      return (
+        `<div class="nudge"><span class="t">${time}</span>` +
+        `<span class="sig">${sig} · ${shortHint(n.fileHint)}</span>` +
+        `<span>${est}</span></div>`
       )
     })
     .join('')

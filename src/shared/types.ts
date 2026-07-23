@@ -102,6 +102,10 @@ export interface HudState {
   contextLength: number | null
   /** Daily budget target the centre ring fills toward, in USD. */
   goalUsd: number
+  /** Delegatable work Claude did inline today (missed opportunities). */
+  unburnedToday: number
+  /** Whether nudges are surfaced, recorded silently, or off. */
+  nudgeMode: NudgeMode
 }
 
 /** One row in the expanded panel's recent-task list. */
@@ -122,3 +126,34 @@ export interface Settings {
   openAtLogin: boolean
   goalUsd: number
 }
+
+/** A Claude Code tool action, forwarded by the PostToolUse hook. */
+export interface HookEvent {
+  ts: number
+  sessionId: string | null
+  cwd: string | null
+  tool: string
+  filePath: string | null
+  oldString: string | null
+  newString: string | null
+  content: string | null
+  contentHash: string | null
+  taskText: string | null
+  outputHash: string | null
+}
+
+/** A detected-but-not-taken delegation opportunity ("unburned fuel"). */
+export interface Nudge {
+  id?: number
+  ts: number
+  sessionId: string | null
+  score: number
+  signals: string[]
+  tool: string | null
+  fileHint: string | null
+  estTokens: number | null
+  dismissed: boolean
+}
+
+/** How nudges surface. Shadow records without showing, to calibrate first. */
+export type NudgeMode = 'shadow' | 'live' | 'off'

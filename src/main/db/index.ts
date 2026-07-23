@@ -1,7 +1,7 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { DailyTotals, OffloadEvent, Sample } from '@shared/types'
+import type { DailyTotals, Nudge, OffloadEvent, Sample } from '@shared/types'
 import { SAMPLE_RETENTION_DAYS } from '@shared/constants'
 
 const SCHEMA = `
@@ -78,6 +78,16 @@ function startOfLocalDay(ts: number = Date.now()): number {
   const d = new Date(ts)
   d.setHours(0, 0, 0, 0)
   return d.getTime()
+}
+
+function safeParseSignals(raw: number | string | null): string[] {
+  if (typeof raw !== 'string') return []
+  try {
+    const v = JSON.parse(raw)
+    return Array.isArray(v) ? v.map(String) : []
+  } catch {
+    return []
+  }
 }
 
 export class Store {
@@ -201,6 +211,55 @@ export class Store {
       )
       .get(Date.now() - 86_400_000) as Record<string, number> | undefined
     return Number(row?.n ?? 0) > 0
+  }
+
+  insertNudge(nudge: Nudge): number {
+    const r = this.db
+      .prepare(
+        `INSERT INTO nudges (ts, session_id, score, signals, tool, file_hint, est_tokens, dismissed)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        nudge.ts,
+        nudge.sessionId,
+        nudge.score,
+        JSON.stringify(nudge.signals),
+        nudge.tool,
+        nudge.fileHint,
+        nudge.estTokens,
+        nudge.dismissed ? 1 : 0,
+      )
+    return Number(r.lastInsertRowid)
+  }
+
+  /** Count of non-dismissed nudges recorded today (local day). */
+  todayNudgeCount(): number {
+    const from = startOfLocalDay()
+    const row = this.db
+      .prepare('SELECT COUNT(*) AS n FROM nudges WHERE ts >= ? AND dismissed = 0')
+      .get(from) as Record<string, number> | undefined
+    return Number(row?.n ?? 0)
+  }
+
+  /** Recent nudges, newest first — feeds the expanded panel during calibration. */
+  recentNudges(limit: number): Nudge[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, ts, session_id, score, signals, tool, file_hint, est_tokens, dismissed
+         FROM nudges ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(limit) as Array<Record<string, number | string | null>>
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ts: Number(r.ts),
+      sessionId: r.session_id != null ? String(r.session_id) : null,
+      score: Number(r.score),
+      signals: safeParseSignals(r.signals),
+      tool: r.tool != null ? String(r.tool) : null,
+      fileHint: r.file_hint != null ? String(r.file_hint) : null,
+      estTokens: r.est_tokens != null ? Number(r.est_tokens) : null,
+      dismissed: Number(r.dismissed) === 1,
+    }))
   }
 
   /** Most recent tasks, newest first — feeds the expanded panel's list. */

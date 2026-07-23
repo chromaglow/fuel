@@ -82,6 +82,13 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 ## Status
 
+**M4 complete** — the nudge engine spots delegatable work Claude did inline.
+
+- A `PostToolUse` hook (`integrations/hook.cjs`) forwards Write/Edit/MultiEdit/`local_coding_task` actions to the collector — fire-and-forget, never blocks Claude.
+- A conservative classifier (`src/main/nudge/`) flags *unburned fuel*: repetitive mechanical bursts (reformats, import reorders, comment blocks, sibling scaffolding). It hard-suppresses security-sensitive paths and the good case (a real delegation), and a single judgment edit never fires. 11 unit tests pin the bias down.
+- Runs in **shadow mode by default** — nudges are recorded and reviewable in the expanded panel, but the compact count stays hidden until the heuristics are calibrated against real activity (there was no historical ground truth — offloading had never happened). Flip to live from the tray.
+- 30 tests pass. Verified end-to-end: a real Claude-Code-shaped tool burst piped through `hook.cjs` produced one scored nudge.
+
 **M3 complete** — the gauge can now be filled, and by any Claude client.
 
 - The MCP shim is rewritten: it **streams** Ollama's response for exact per-phase timings, requests a real **16,384-token context** (the old shim silently ran at 4,096), and POSTs an attributed telemetry record to a local collector — fire-and-forget, with a disk spool fallback so nothing is lost when fuel is closed.
@@ -103,7 +110,7 @@ Electron + TypeScript + better-sqlite3, Canvas 2D for the gauges. Node 24 and Py
 
 **M1 complete** — the sensor layer works end to end: 1 Hz GPU + model-residency telemetry, a log tailer that captures inference events with exact token counts (parser `eval_ns` matched Ollama's `eval_duration` to the nanosecond), and persistence across restarts.
 
-Next: **M4** — the nudge engine: a `PostToolUse` hook that spots delegatable work Claude did inline, surfaced as unburned fuel.
+Next: **M5** — the opt-in reverse-proxy valve (pre-warm away the cold start, force context for all clients, `keep_alive` pinning).
 
 ## License
 

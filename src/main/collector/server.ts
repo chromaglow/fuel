@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http'
-import type { OffloadEvent } from '@shared/types'
+import type { HookEvent, OffloadEvent } from '@shared/types'
 import { COLLECTOR_HOST, COLLECTOR_PORT, COLD_START_NS } from '@shared/constants'
 
 /** The JSON the instrumented MCP shim POSTs to /ingest. */
@@ -61,21 +61,57 @@ function toEvent(b: IngestBody): OffloadEvent | null {
   }
 }
 
+/** The JSON the PostToolUse hook POSTs to /hook. */
+interface HookBody {
+  session_id?: string | null
+  cwd?: string | null
+  tool?: string
+  file_path?: string | null
+  old_string?: string | null
+  new_string?: string | null
+  content?: string | null
+  content_hash?: string | null
+  task?: string | null
+  output_hash?: string | null
+}
+
+function toHookEvent(b: HookBody): HookEvent | null {
+  if (!b || typeof b !== 'object' || !b.tool) return null
+  const s = (v: unknown): string | null => (v != null ? String(v) : null)
+  return {
+    ts: Date.now(),
+    sessionId: s(b.session_id),
+    cwd: s(b.cwd),
+    tool: String(b.tool),
+    filePath: s(b.file_path),
+    oldString: s(b.old_string),
+    newString: s(b.new_string),
+    content: s(b.content),
+    contentHash: s(b.content_hash),
+    taskText: s(b.task),
+    outputHash: s(b.output_hash),
+  }
+}
+
 /**
- * Loopback ingest endpoint for the Phase C shim and hooks.
+ * Loopback ingest for the Phase C shim (/ingest) and PostToolUse hook (/hook).
  *
- * Each Claude Code / Desktop session spawns its *own* ollama_mcp.py process, so
- * per-process state is useless — every instrumented call POSTs here, to the one
+ * Each Claude Code / Desktop session spawns its *own* shim and fires its own
+ * hooks, so per-process state is useless — everything POSTs here, to the one
  * long-lived collector. Bound to 127.0.0.1 only; no auth needed on loopback.
  */
 export class Collector {
   private server: Server | null = null
 
-  constructor(private readonly onEvent: (e: OffloadEvent) => void) {}
+  constructor(
+    private readonly onEvent: (e: OffloadEvent) => void,
+    private readonly onHook: (e: HookEvent) => void = () => {},
+  ) {}
 
   start(): void {
     this.server = createServer((req, res) => {
-      if (req.method !== 'POST' || req.url !== '/ingest') {
+      const route = req.url
+      if (req.method !== 'POST' || (route !== '/ingest' && route !== '/hook')) {
         res.writeHead(404).end()
         return
       }
@@ -92,8 +128,14 @@ export class Collector {
       req.on('end', () => {
         if (tooBig) return
         try {
-          const event = toEvent(JSON.parse(body) as IngestBody)
-          if (event) this.onEvent(event)
+          const parsed = JSON.parse(body)
+          if (route === '/ingest') {
+            const event = toEvent(parsed as IngestBody)
+            if (event) this.onEvent(event)
+          } else {
+            const hookEvent = toHookEvent(parsed as HookBody)
+            if (hookEvent) this.onHook(hookEvent)
+          }
           res.writeHead(204).end()
         } catch {
           res.writeHead(400).end()
@@ -119,3 +161,4 @@ export class Collector {
 
 // Exposed for unit testing the wire-format parsing.
 export const _toEvent = toEvent
+export const _toHookEvent = toHookEvent

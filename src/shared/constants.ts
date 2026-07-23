@@ -50,8 +50,8 @@ export const RECONCILE_WINDOW_MS = 6000
 export const WINDOW_WIDTH = 320
 /** Compact: header + 240px gauge + footer. */
 export const WINDOW_HEIGHT = 326
-/** Hover-expanded, with the dense telemetry panel revealed. */
-export const WINDOW_HEIGHT_EXPANDED = 552
+/** Hover-expanded, with the dense telemetry panel + nudge list revealed. */
+export const WINDOW_HEIGHT_EXPANDED = 664
 
 /**
  * Daily budget-ring target in USD. The ring fills toward this; anything past
@@ -61,3 +61,17 @@ export const DEFAULT_DAILY_GOAL_USD = 2.0
 
 /** How many recent tasks the expanded panel lists. */
 export const RECENT_EVENT_LIMIT = 6
+
+// ---- Nudge engine (M4) ----
+
+/** A cluster scoring at least this much is flagged as unburned fuel. */
+export const NUDGE_THRESHOLD = 4
+/** Tool events within this window of each other form one burst. */
+export const NUDGE_WINDOW_MS = 60_000
+/** Don't re-nudge the same session+directory more than once per this period. */
+export const NUDGE_DEBOUNCE_MS = 300_000
+/** A reformat/import-reorder/comment block must touch at least this many lines
+ *  to count as substantial on its own — one-line tidies aren't worth offloading. */
+export const MECHANICAL_MIN_LINES = 4
+/** Rough chars-per-token for the est-tokens display. */
+export const CHARS_PER_TOKEN = 4
