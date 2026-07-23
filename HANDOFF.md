@@ -1,8 +1,10 @@
 # fuel — Handoff & Resume Guide
 
-The one document to read before picking this project back up. For the full design see [SPEC.md](./SPEC.md); for the pitch see [README.md](./README.md). This file is the *state of play* plus every trap already hit, so nobody re-derives them.
+The one document to read before picking this project back up. For the full design see [SPEC.md](./SPEC.md); for the pitch see [README.md](./README.md); for the blow-by-blow of how the Toll Booth got built see [CHANGELOG.md](./CHANGELOG.md). This file is the *state of play* plus every trap already hit, so nobody re-derives them.
 
-Last updated: 2026-07-23 (end of M5).
+Last updated: 2026-07-23 (Toll Booth built — M1–M6 of the router; **awaiting activation**, see "Activating the Toll Booth" below).
+
+> **Resuming to make it work?** Read this file top-to-bottom, then jump to **[Activating the Toll Booth](#activating-the-toll-booth)** — that's the one thing left to do, and it's a guided ~3-step process (restart on the new build → register one PreToolUse hook → run in `observe`, then flip to `guard`).
 
 ---
 
@@ -21,8 +23,17 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 | **M3 — Cockpit** | ✅ done | Instrumented MCP shim (streaming + `num_ctx`), collector, reconciler dedup, installer, first tests |
 | **M4 — Nudge** | ✅ done | `PostToolUse` hook + classifier flagging delegatable inline work as "unburned fuel"; shadow-mode default |
 | **M5 — Valve** | ✅ done | Opt-in reverse proxy in front of Ollama: forces `num_ctx`/pins `keep_alive` for *all* clients, pre-warm, watchdog auto-bypass, `--unhook`; disabled by default |
+| **Toll Booth** *(new subsystem)* | ✅ built, **inert** | Real-time offload router: reads each pending Write/Edit, decides `local`/`cloud`/`gray` (verifiability-first, cloud-default), records an auditable receipt, shows a catch-rate tile + decision feed, tunable from the tray. Built + tested; **not yet activated**. |
 
-Everything through M5 is committed to `main` (https://github.com/chromaglow/fuel); M1–M4 are pushed and **M5 is committed locally but not yet pushed**.
+Everything — the M1–M5 milestones **and** the new Toll Booth — is committed and pushed to `main` (https://github.com/chromaglow/fuel). Suite: **72 tests passing**.
+
+> ⚠️ **Naming clash to know about:** the Toll Booth's build was decomposed into six *internal* modules also labelled M1–M6 (Net, Sorter, Receipts, Catch, Dashboard, Controls). Those are **distinct** from the project's original M1–M5 milestones above. When this doc or the commit log says e.g. "M4 (Catch)", that's a Toll-Booth module; "M4 — Nudge" is the old milestone. See [CHANGELOG.md](./CHANGELOG.md) for the module→commit map.
+
+## The Toll Booth, in one breath
+
+The old **M4 Nudge** engine only flags delegatable work *after* Claude already did it, and (as the 2026-07-23 investigation found) it scored single-file scaffolds at **0**, so it never fired. The **Toll Booth** replaces that with a real-time router: on every *pending* Write/Edit it reads six "designators" (verifiability ★, spec-completeness, pattern-analog, blast-radius, reasoning-depth, context-locality), routes the work, and — in `guard` mode — advises Claude to send clearly-mechanical work to the local model *before* typing it. **Core law: cost is never the criterion; verifiability is the master gate** ("if the cheap model gets it wrong, do I find out immediately and for free?").
+
+Modules & files: **M1 Net** `src/main/nudge/signals.ts` · **M2 Sorter** `src/main/nudge/sorter.ts` · **M3 Receipts** `src/main/db/index.ts` (+`receipts` table, `ReceiptRecord`/`CatchStats` in `src/shared/types.ts`) · **M4 Catch** `src/main/nudge/gate.ts` + `/decide` endpoint in `collector/server.ts` + `integrations/precheck.cjs` (the PreToolUse hook) · **M5 Dashboard** `src/renderer/panel.ts`+`hud.ts` (the "toll booth" panel section) · **M6 Controls** `src/main/tray.ts` (Toll booth submenu). Tests: `test/{signals,sorter,receipts,gate}.test.ts`.
 
 ## The two things NOT run, on purpose
 
@@ -34,13 +45,42 @@ Both are outward-facing, reversible-but-real system changes, so — like every m
 
 ---
 
+## Activating the Toll Booth
+
+Built but **inert** — it changes nothing until these steps. Lead the user through them in order; each is safe and reversible.
+
+**Pre-flight (read-only).** `npm run build` (refresh `out/`), `npm test` (expect **72**). Then check whether the running fuel app is the *new* build — if the app was open before the build it's serving the OLD code (no `/decide`, no toll-booth panel).
+
+**Step 1 — Restart the app on the new build.** Quit (tray → Quit, or `Ctrl+Alt+Q`), then `npx electron .`. After this the tray shows a **Toll booth** submenu and the expanded HUD (hover) shows a **toll booth** section (empty until Step 2).
+
+**Step 2 — Register the PreToolUse hook** (the one live-config change — get the user's OK first, same posture as the installer). Two sub-steps:
+1. Copy the hook next to the existing one: `cp integrations/precheck.cjs "$USERPROFILE/.claude/precheck.cjs"` (`install.mjs` does **not** do this yet — a good follow-on).
+2. Add to `~/.claude/settings.json` under `hooks.PreToolUse` (mirrors the existing fuel PostToolUse entry):
+   ```json
+   {
+     "matcher": "Write|Edit|MultiEdit",
+     "hooks": [{ "type": "command", "command": "node \"C:\\Users\\ezras\\.claude\\precheck.cjs\"", "timeout": 5 }]
+   }
+   ```
+   Restart Claude Code so it loads the hook. The hook **fails open** — if fuel is down/slow it exits 0 and the edit proceeds untouched; it never blocks a tool.
+
+**Step 3 — Run `observe`, then flip to `guard`.** Default is `observe` (tray → Toll booth → Observe): every pending Write/Edit is routed and logged to the catch-rate tile with **zero interference**. Watch the decision feed for a day or two — confirm mechanical work reads `local` and judgment work reads `cloud`. When it looks right, switch to **Guard**: clearly-local work now triggers a just-in-time advisory to route it to `local_coding_task`. **Sensitivity** (Careful/Normal/Eager) tunes eagerness; **Off** disables.
+
+**Is it working?** Hover the HUD → the **toll booth** section shows `free-lane N/eligible` + a live feed of decisions with lane badges + reasons. In guard mode a mechanical edit surfaces a *"fuel: this looks like local work…"* prompt.
+
+**Escape hatch:** tray → Toll booth → **Off** (instant), or delete the PreToolUse entry from `settings.json`.
+
+**Two gaps (safe to activate without them):** the `offloaded` count stays 0 until outcome-stamping is wired (reconcile advise→actual via the PostToolUse side); per-category toggles need a category filter in the Sorter (M2).
+
+---
+
 ## How to run it
 
 ```bash
 npm install            # zero native deps — node:sqlite is built into Electron's Node
 npm run build          # electron-vite build → out/
 npx electron .         # or: npm run dev  (HMR)
-npm test               # 41 tests, node --test, no deps
+npm test               # 72 tests, node --test, no deps
 npm run typecheck      # tsc --noEmit
 node scripts/inspect.mjs        # dump what's been captured to the DB
 node scripts/make-icon.mjs      # regenerate tray/app icons (build/*.png)
@@ -49,7 +89,7 @@ node integrations/valve.mjs status     # check valve relocation (read-only)
 npx electron . --unhook                # emergency: undo the valve relocation, then exit
 ```
 
-Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow) and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
+Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow), the **Toll booth** (mode: observe/guard/off + sensitivity: careful/normal/eager), and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
 
 ---
 
@@ -115,16 +155,17 @@ Read these before touching the relevant area — each cost real time to find.
 SPEC.md                      full design (13 sections) + measured baselines
 src/main/                    Electron main: sensors/, collector/, nudge/, db/, window, tray, metrics
   sensors/                   nvidiaSmi (GpuMonitor), ollamaApi, ollamaLog (tailer + parser)
-  collector/                 server (:47113, /ingest + /hook), reconcile (dedup), spool
-  nudge/                     classify (feature extraction + burst scorer + NudgeClassifier)
+  collector/                 server (:47113, /ingest + /hook + /decide), reconcile (dedup), spool
+  nudge/                     classify (old M4 nudge) · Toll Booth: signals (M1), sorter (M2), gate (M4)
   proxy/                     M5 valve: rewrite (pure ctx/keep_alive forcing), watchdog (bypass FSM), server (Valve HTTP proxy)
-src/renderer/                HUD: gauges/, hud.ts (event-driven render loop), panel, theme
-src/shared/                  types + constants shared across processes
+src/renderer/                HUD: gauges/, hud.ts (event-driven render loop), panel (incl. toll-booth tile+feed), theme
+src/shared/                  types (incl. ReceiptRecord, CatchStats) + constants shared across processes
 integrations/ollama_mcp.py   the fuel-instrumented MCP shim (installed by install.mjs)
-integrations/hook.cjs        PostToolUse nudge hook (M4) — .cjs, not .js (see trap #12)
+integrations/hook.cjs        PostToolUse nudge hook (old M4) — .cjs, not .js (see trap #12)
+integrations/precheck.cjs    PreToolUse Toll-Booth gate → POSTs /decide; fail-open (see "Activating the Toll Booth")
 integrations/install.mjs     status | install | uninstall — wires shim + hook into Claude (live configs)
 integrations/valve.mjs       status | hook | unhook — relocates Ollama to :11435 via OLLAMA_HOST (M5)
-test/                        node --test suites (reconcile, parse, collector, classify, rewrite, watchdog) + alias hook
+test/                        node --test suites (reconcile, parse, collector, classify, rewrite, watchdog, signals, sorter, receipts, gate) + alias hook
 scripts/                     inspect.mjs (DB dump), make-icon.mjs (PNG gen)
 config/pricing.json          Claude API rates for the budget estimate
 ```
@@ -133,10 +174,10 @@ config/pricing.json          Claude API rates for the budget estimate
 
 ## Immediate next steps to resume
 
-All five milestones are implemented. What's left is *activation* and hardening, not new milestones.
+The five milestones **and** the Toll Booth are built. What's left is *activation*, not new code.
 
-1. `npm install && npm run build && npx electron .` — confirm the HUD is on screen. `npm test` should show **41 passing**.
-2. **Push M5.** It's committed locally (`git push` to publish).
-3. Decide whether to run `node integrations/install.mjs install` (goes live: installs the shim + nudge hook, tags Claude Code, enables Claude Desktop — modifies live configs). Run with Claude closed. **This is the highest-value unrun step** — until it runs, the gauge stays near zero, which is the whole problem fuel exists to attack.
-4. Optionally engage the valve: `node integrations/valve.mjs hook` → restart Ollama → tick the tray toggle. Run it in-path for a week; the M5 exit criterion is *zero* inference failures attributable to fuel. Watch for cold-start rate dropping (keep_alive pinned) and truncation staying at zero (num_ctx forced for every client).
-5. Remaining gaps worth a pass: **proxy attribution** (the valve currently forces ctx but doesn't emit per-client `source:'proxy'` events — the log tailer still counts all inference, and wiring proxy events would need reconciler care to avoid double-counting the shim); packaging (`electron-builder` → NSIS, SPEC §8); and the live per-token throughput stream (currently last-completed only).
+1. **Activate the Toll Booth — the headline task.** Follow **[Activating the Toll Booth](#activating-the-toll-booth)**: rebuild → restart on the new build → register `precheck.cjs` (one live-config change, get consent) → run `observe`, then flip to `guard`. This is what finally closes the loop the whole project exists for.
+2. Sanity check the build: `npm test` → **72 passing**; `npm run build` clean.
+3. The installer is **already wired** (as of 2026-07-23 `node integrations/install.mjs status` shows *fully wired* — shim + old nudge hook + Claude Code + Desktop). Nothing to do unless re-installing; run with Claude closed if you do.
+4. Optionally engage the valve: `node integrations/valve.mjs hook` → restart Ollama → tick the tray toggle. Run it in-path for a week; the M5 exit criterion is *zero* inference failures attributable to fuel.
+5. Remaining gaps worth a pass: **Toll-Booth outcome-stamping** (the `offloaded` count — reconcile advise→actual on the PostToolUse side) and **per-category toggles** (a category filter in the Sorter); plus older ones — **proxy attribution** (valve forces ctx but emits no per-client `source:'proxy'` events), packaging (`electron-builder` → NSIS, SPEC §8), and live per-token throughput (currently last-completed only).

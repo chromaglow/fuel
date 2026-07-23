@@ -6,6 +6,54 @@ decided. Newest entry on top. This is the narrative companion to
 
 ---
 
+## 2026-07-23 (later) — Toll Booth built: 6 modules shipped (M1–M6)
+
+**Supersedes the "nothing in the codebase changed" status in the entry below.**
+After the diagnosis + plan, the user picked the full toll-booth scope and we
+built all six modules under their Operating Rules (one module at a time, each
+tested + checkpointed + committed). Suite **41 → 72**, all pushed to `main`.
+
+### The modules (module → file → commit)
+
+| # | Module | Files | Commit |
+|---|---|---|---|
+| M1 | **Net** — pure `extractSignals()` → 6 designators | `src/main/nudge/signals.ts` | `2b56179` |
+| M2 | **Sorter** — pure `decide()` → route + receipt (verifiability-first, cloud-default, aggressiveness presets) | `src/main/nudge/sorter.ts` | `09ae97f` |
+| M3 | **Receipts** — `receipts` table + `insert/recent/todayCatchStats`; `ReceiptRecord`/`CatchStats` types | `src/main/db/index.ts`, `src/shared/types.ts` | `6cc37ec` |
+| M4 | **Catch** — real-time `PreToolUse` gate (observe/guard/off) + `/decide` endpoint + hook | `src/main/nudge/gate.ts`, `collector/server.ts`, `integrations/precheck.cjs` | `0ff4f34` |
+| M5 | **Dashboard** — catch-rate tile + live decision feed on the HUD | `src/renderer/{panel,hud}.ts`, `index.html`, `style.css` | `5731b2a` |
+| M6 | **Controls** — tray Toll booth submenu (mode + sensitivity) | `src/main/tray.ts`, `index.ts` | `d93d3e9` |
+
+### Notable
+
+- **Dogfooded M3 on the local model.** The receipts CRUD was drafted via
+  `local_coding_task` (registered on the gauge as a ~673-token offload, warm
+  ~55 tok/s); the tests and the fixes (JSON.parse type-safety + `safeParseJson`
+  guard, house style, schema folded into `SCHEMA`) are Claude's. First time the
+  offload loop was proven live — building fuel *with* fuel.
+- **Design principle locked:** cost is never the routing criterion; **verifiability
+  is the master gate** ("if the cheap model errs, do I catch it immediately?").
+  This is what stops the naive "route everything to Ollama" failure mode.
+- Fixed the test resolve hook to map relative `.js`→`.ts` (`test/alias-hook.mjs`)
+  so modules with runtime relative imports load under `node --test`.
+- Naming clash noted: the toll-booth's internal modules M1–M6 are **distinct**
+  from the project's original M1–M5 milestones.
+
+### State: built + inert (awaiting activation)
+
+Nothing is live yet. Activation = restart app on the new build → register
+`precheck.cjs` as a `PreToolUse` hook (matcher `Write|Edit|MultiEdit`) → run
+`observe`, then flip to `guard`. Full walkthrough in **HANDOFF.md →
+"Activating the Toll Booth."**
+
+### Known gaps (safe to activate without)
+
+- **Outcome stamping** — the `offloaded` count stays 0 until advise→actual is
+  reconciled on the PostToolUse side.
+- **Per-category toggles** — need a category filter in the Sorter (M2).
+
+---
+
 ## 2026-07-23 — "Nothing's happening" → root cause → the toll-booth plan
 
 ### TL;DR
