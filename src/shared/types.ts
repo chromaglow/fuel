@@ -157,3 +157,26 @@ export interface Nudge {
 
 /** How nudges surface. Shadow records without showing, to calibrate first. */
 export type NudgeMode = 'shadow' | 'live' | 'off'
+
+/** One toll-booth routing decision, persisted for audit + the catch-rate tile. */
+export interface ReceiptRecord {
+  id?: number
+  ts: number
+  sessionId: string | null
+  tool: string | null
+  fileHint: string | null
+  route: 'local' | 'cloud' | 'gray'
+  score: number
+  confidence: number
+  reasons: string[]
+  signals: unknown
+  outcome: string | null
+}
+
+/** Today's routing tally — feeds the "free-lane rate on eligible work" tile. */
+export interface CatchStats {
+  local: number
+  cloud: number
+  gray: number
+  offloaded: number
+}

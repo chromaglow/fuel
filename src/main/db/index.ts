@@ -1,7 +1,14 @@
 import { DatabaseSync } from 'node:sqlite'
 import { mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { DailyTotals, Nudge, OffloadEvent, Sample } from '@shared/types'
+import type {
+  CatchStats,
+  DailyTotals,
+  Nudge,
+  OffloadEvent,
+  ReceiptRecord,
+  Sample,
+} from '@shared/types'
 import { SAMPLE_RETENTION_DAYS } from '@shared/constants'
 
 const SCHEMA = `
@@ -59,6 +66,21 @@ CREATE TABLE IF NOT EXISTS nudges (
 );
 CREATE INDEX IF NOT EXISTS idx_nudges_ts ON nudges(ts);
 
+CREATE TABLE IF NOT EXISTS receipts (
+  id                INTEGER PRIMARY KEY,
+  ts                INTEGER NOT NULL,
+  session_id        TEXT,
+  tool              TEXT,
+  file_hint         TEXT,
+  route             TEXT NOT NULL,
+  score             REAL NOT NULL,
+  confidence        REAL NOT NULL,
+  reasons           TEXT NOT NULL,
+  signals           TEXT NOT NULL,
+  outcome           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_receipts_ts ON receipts(ts);
+
 CREATE TABLE IF NOT EXISTS meta (
   key               TEXT PRIMARY KEY,
   value             TEXT NOT NULL
@@ -87,6 +109,15 @@ function safeParseSignals(raw: number | string | null): string[] {
     return Array.isArray(v) ? v.map(String) : []
   } catch {
     return []
+  }
+}
+
+function safeParseJson<T>(raw: number | string | null, fallback: T): T {
+  if (typeof raw !== 'string') return fallback
+  try {
+    return JSON.parse(raw) as T
+  } catch {
+    return fallback
   }
 }
 
@@ -260,6 +291,73 @@ export class Store {
       estTokens: r.est_tokens != null ? Number(r.est_tokens) : null,
       dismissed: Number(r.dismissed) === 1,
     }))
+  }
+
+  /** Persist one toll-booth decision. Returns the new row id. */
+  insertReceipt(r: ReceiptRecord): number {
+    const res = this.db
+      .prepare(
+        `INSERT INTO receipts
+         (ts, session_id, tool, file_hint, route, score, confidence, reasons, signals, outcome)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        r.ts,
+        r.sessionId,
+        r.tool,
+        r.fileHint,
+        r.route,
+        r.score,
+        r.confidence,
+        JSON.stringify(r.reasons),
+        JSON.stringify(r.signals),
+        r.outcome,
+      )
+    return Number(res.lastInsertRowid)
+  }
+
+  /** Recent routing decisions, newest first — feeds the HUD decision feed. */
+  recentReceipts(limit: number): ReceiptRecord[] {
+    const rows = this.db
+      .prepare(
+        `SELECT id, ts, session_id, tool, file_hint, route, score, confidence, reasons, signals, outcome
+         FROM receipts ORDER BY ts DESC LIMIT ?`,
+      )
+      .all(limit) as Array<Record<string, number | string | null>>
+    return rows.map((r) => ({
+      id: Number(r.id),
+      ts: Number(r.ts),
+      sessionId: r.session_id != null ? String(r.session_id) : null,
+      tool: r.tool != null ? String(r.tool) : null,
+      fileHint: r.file_hint != null ? String(r.file_hint) : null,
+      route: String(r.route) as ReceiptRecord['route'],
+      score: Number(r.score),
+      confidence: Number(r.confidence),
+      reasons: safeParseSignals(r.reasons),
+      signals: safeParseJson<unknown>(r.signals, null),
+      outcome: r.outcome != null ? String(r.outcome) : null,
+    }))
+  }
+
+  /** Today's routing tally (local day) — the catch-rate tile. */
+  todayCatchStats(): CatchStats {
+    const from = startOfLocalDay()
+    const row = this.db
+      .prepare(
+        `SELECT
+           COALESCE(SUM(CASE WHEN route = 'local'      THEN 1 ELSE 0 END), 0) AS local,
+           COALESCE(SUM(CASE WHEN route = 'cloud'      THEN 1 ELSE 0 END), 0) AS cloud,
+           COALESCE(SUM(CASE WHEN route = 'gray'       THEN 1 ELSE 0 END), 0) AS gray,
+           COALESCE(SUM(CASE WHEN outcome = 'offloaded' THEN 1 ELSE 0 END), 0) AS offloaded
+         FROM receipts WHERE ts >= ?`,
+      )
+      .get(from) as Record<string, number> | undefined
+    return {
+      local: Number(row?.local ?? 0),
+      cloud: Number(row?.cloud ?? 0),
+      gray: Number(row?.gray ?? 0),
+      offloaded: Number(row?.offloaded ?? 0),
+    }
   }
 
   /** Most recent tasks, newest first — feeds the expanded panel's list. */
