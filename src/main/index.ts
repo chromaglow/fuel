@@ -2,12 +2,14 @@ import { app, BrowserWindow, globalShortcut, ipcMain, type Tray } from 'electron
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import type {
+  CatchStats,
   HudPhase,
   HudState,
   Nudge,
   NudgeMode,
   OffloadEvent,
   RecentEvent,
+  ReceiptRecord,
   Sample,
 } from '@shared/types'
 import {
@@ -405,6 +407,12 @@ function registerIpc(): void {
   })
 
   ipcMain.handle('fuel:recent-nudges', (): Nudge[] => store.recentNudges(RECENT_EVENT_LIMIT))
+
+  ipcMain.handle('fuel:catch-stats', (): CatchStats => store.todayCatchStats())
+
+  ipcMain.handle('fuel:recent-receipts', (): ReceiptRecord[] =>
+    store.recentReceipts(RECENT_EVENT_LIMIT),
+  )
 
   ipcMain.on('fuel:quit', () => app.quit())
 }

@@ -1,10 +1,16 @@
-import type { HudState, Nudge, RecentEvent } from '../shared/types.js'
+import type { CatchStats, HudState, Nudge, ReceiptRecord, RecentEvent } from '../shared/types.js'
 import { TOK_PER_SEC_REDLINE, UTIL_HISTORY_LEN } from '../shared/constants.js'
 import { GAUGE_SIZE, lerp } from './theme.js'
 import { drawRing } from './gauges/ring.js'
 import { drawArc } from './gauges/arc.js'
 import { drawSparkline } from './gauges/sparkline.js'
-import { renderPanelNudges, renderPanelRows, renderPanelTasks } from './panel.js'
+import {
+  renderPanelCatch,
+  renderPanelNudges,
+  renderPanelReceipts,
+  renderPanelRows,
+  renderPanelTasks,
+} from './panel.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T
@@ -21,6 +27,8 @@ const el = {
   nudgeHeading: $('nudge-heading'),
   panelRows: $('panel-rows'),
   panelTasks: $('panel-tasks'),
+  panelCatch: $('panel-catch'),
+  panelReceipts: $('panel-receipts'),
   panelNudges: $('panel-nudges'),
   gauge: $<HTMLCanvasElement>('gauge'),
 }
@@ -242,11 +250,16 @@ window.fuel.onExpanded(async (next) => {
     // withheld from the compact HUD during calibration.
     el.nudgeHeading.classList.toggle('shadow', state.nudgeMode === 'shadow')
   }
-  const [events, nudges]: [RecentEvent[], Nudge[]] = await Promise.all([
-    window.fuel.recentEvents(),
-    window.fuel.recentNudges(),
-  ])
+  const [events, nudges, catch_, receipts]: [RecentEvent[], Nudge[], CatchStats, ReceiptRecord[]] =
+    await Promise.all([
+      window.fuel.recentEvents(),
+      window.fuel.recentNudges(),
+      window.fuel.catchStats(),
+      window.fuel.recentReceipts(),
+    ])
   renderPanelTasks(el.panelTasks, events)
+  renderPanelCatch(el.panelCatch, catch_)
+  renderPanelReceipts(el.panelReceipts, receipts)
   renderPanelNudges(el.panelNudges, nudges)
 })
 

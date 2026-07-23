@@ -1,4 +1,4 @@
-import type { HudState, Nudge, RecentEvent } from '../shared/types.js'
+import type { CatchStats, HudState, Nudge, ReceiptRecord, RecentEvent } from '../shared/types.js'
 
 function row(k: string, v: string, cls = ''): string {
   return `<div class="k">${k}</div><div class="v ${cls}">${v}</div>`
@@ -107,6 +107,49 @@ function shortHint(hint: string | null): string {
   if (!hint) return ''
   const base = hint.replace(/\\/g, '/').split('/').filter(Boolean).slice(-2).join('/')
   return base.length > HINT_MAX ? '…' + base.slice(-HINT_MAX) : base
+}
+
+/**
+ * The catch-rate tile: of the work eligible for the free lane (local + gray),
+ * how much the toll booth actually routed local. Cloud work is correctly
+ * excluded — it was never a candidate — so it sits outside the ratio.
+ */
+export function renderPanelCatch(el: HTMLElement, s: CatchStats): void {
+  const eligible = s.local + s.gray
+  const total = eligible + s.cloud
+  if (total === 0) {
+    el.innerHTML = '<div class="empty">no decisions yet</div>'
+    return
+  }
+  const pct = eligible > 0 ? Math.round((s.local / eligible) * 100) : 0
+  const actual = s.offloaded > 0 ? ` · ${s.offloaded} offloaded` : ''
+  el.innerHTML =
+    `<div class="catch-head"><span class="catch-rate">${s.local}/${eligible}</span>` +
+    `<span class="catch-sub">free-lane on eligible · ${pct}%${actual}</span></div>` +
+    `<div class="catch-mix">` +
+    `<span class="badge local">${s.local} local</span>` +
+    `<span class="badge gray">${s.gray} gray</span>` +
+    `<span class="badge cloud">${s.cloud} cloud</span>` +
+    `</div>`
+}
+
+/** The live decision feed — each routing call with its lane and one reason. */
+export function renderPanelReceipts(el: HTMLElement, receipts: ReceiptRecord[]): void {
+  if (receipts.length === 0) {
+    el.innerHTML = '<div class="empty">no decisions yet</div>'
+    return
+  }
+  el.innerHTML = receipts
+    .map((r) => {
+      const time = new Date(r.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      const why = r.reasons.filter((x) => x !== 'ambiguous-default-cloud')[0] ?? r.route
+      return (
+        `<div class="receipt"><span class="t">${time}</span>` +
+        `<span class="badge ${r.route}">${r.route}</span>` +
+        `<span class="sig">${shortHint(r.fileHint)} · ${why}</span></div>`
+      )
+    })
+    .join('')
 }
 
 /**
