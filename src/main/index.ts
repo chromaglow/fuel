@@ -34,6 +34,9 @@ import { Collector } from './collector/server.js'
 import { Reconciler } from './collector/reconcile.js'
 import { drainSpool } from './collector/spool.js'
 import { NudgeClassifier } from './nudge/classify.js'
+import { evaluate as gateEvaluate, toReceiptRecord } from './nudge/gate.js'
+import type { DecidePayload, GateMode } from './nudge/gate.js'
+import type { Aggressiveness } from './nudge/sorter.js'
 import { Valve } from './proxy/server.js'
 import { Watchdog } from './proxy/watchdog.js'
 import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
@@ -66,6 +69,15 @@ let watchdog: Watchdog | null = null
  */
 let nudgeMode: NudgeMode = 'shadow'
 
+/**
+ * Toll-booth (M4) surfacing. 'observe' records every routing decision as a
+ * receipt but never interferes — the safe default while the designators
+ * calibrate. 'guard' additionally advises redirecting clearly-local work;
+ * 'off' disables the gate. `tollLevel` is the aggressiveness preset.
+ */
+let tollMode: GateMode = 'observe'
+let tollLevel: Aggressiveness = 'normal'
+
 let utilHistory: number[] = []
 let logBusy = false
 let lastTokPerSec: number | null = null
@@ -97,6 +109,12 @@ function loadSettings(): void {
   if (Number.isFinite(goal) && goal > 0) goalUsd = goal
   const mode = store.getMeta('nudge.mode')
   if (mode === 'shadow' || mode === 'live' || mode === 'off') nudgeMode = mode
+  const tMode = store.getMeta('toll.mode')
+  if (tMode === 'observe' || tMode === 'guard' || tMode === 'off') tollMode = tMode
+  const tLevel = store.getMeta('toll.level')
+  if (tLevel === 'off' || tLevel === 'careful' || tLevel === 'normal' || tLevel === 'eager') {
+    tollLevel = tLevel
+  }
 }
 
 /** Whether the valve was engaged last session; re-engaged (guarded) on launch. */
@@ -332,6 +350,12 @@ function startSensors(): void {
   collector = new Collector(
     (e) => reconciler?.onMcp(e),
     (h) => classifier?.onEvent(h),
+    (payload) =>
+      gateEvaluate(payload as DecidePayload, {
+        level: tollLevel,
+        mode: tollMode,
+        record: (r, ev) => store.insertReceipt(toReceiptRecord(r, ev)),
+      }),
   )
   collector.start()
 

@@ -106,12 +106,19 @@ export class Collector {
   constructor(
     private readonly onEvent: (e: OffloadEvent) => void,
     private readonly onHook: (e: HookEvent) => void = () => {},
+    // The PreToolUse gate POSTs a pending tool action to /decide and gets back
+    // a routing verdict. Defaults to a permissive no-op so /decide never blocks.
+    private readonly onDecide: (payload: unknown) => unknown = () => ({
+      route: 'cloud',
+      action: 'allow',
+      reasons: [],
+    }),
   ) {}
 
   start(): void {
     this.server = createServer((req, res) => {
       const route = req.url
-      if (req.method !== 'POST' || (route !== '/ingest' && route !== '/hook')) {
+      if (req.method !== 'POST' || (route !== '/ingest' && route !== '/hook' && route !== '/decide')) {
         res.writeHead(404).end()
         return
       }
@@ -129,6 +136,11 @@ export class Collector {
         if (tooBig) return
         try {
           const parsed = JSON.parse(body)
+          if (route === '/decide') {
+            const verdict = this.onDecide(parsed)
+            res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(verdict))
+            return
+          }
           if (route === '/ingest') {
             const event = toEvent(parsed as IngestBody)
             if (event) this.onEvent(event)
