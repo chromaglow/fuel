@@ -47,6 +47,8 @@ Both are outward-facing, reversible-but-real system changes, so — like every m
 
 ## Activating the Toll Booth
 
+> **STATUS — 2026-07-23: ACTIVATED (observe mode).** Steps 1–2 are done: the app runs the new build (`/decide` verified live), and `precheck.cjs` is copied to `~/.claude/precheck.cjs` and registered as a `PreToolUse` hook (matcher `Write|Edit|MultiEdit`) in `~/.claude/settings.json` — verified end-to-end (a real hook invocation reached `/decide` and recorded a receipt). **The hook fires in Claude Code sessions started *after* registration** (hooks load at startup), so it began feeding receipts from the next session on. **Remaining: Step 3 — watch observe-mode data, then flip tray → Toll booth → Guard when the calls look right.** Do NOT re-register the hook. The steps below are kept for reference / re-install.
+
 Built but **inert** — it changes nothing until these steps. Lead the user through them in order; each is safe and reversible.
 
 **Pre-flight (read-only).** `npm run build` (refresh `out/`), `npm test` (expect **72**). Then check whether the running fuel app is the *new* build — if the app was open before the build it's serving the OLD code (no `/decide`, no toll-booth panel).
