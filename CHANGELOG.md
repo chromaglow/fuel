@@ -6,6 +6,26 @@ decided. Newest entry on top. This is the narrative companion to
 
 ---
 
+## 2026-07-23 (activation) — Toll Booth activated + usage docs
+
+- **Activated** in **observe** mode: restarted the app on the new build (`/decide`
+  verified live on the wire), copied `precheck.cjs` → `~/.claude/precheck.cjs`, and
+  registered it as a `PreToolUse` hook (matcher `Write|Edit|MultiEdit`) in
+  `~/.claude/settings.json`. Verified end-to-end — a real hook invocation reached
+  `/decide` and recorded a receipt. The hook fires in Claude Code sessions started
+  *after* registration (hooks load at startup).
+- **Persistence:** added a Startup-folder shortcut (`fuel.lnk`) launching
+  `electron.exe "<fuel dir>"` at login. The tray "Launch at login" toggle is unreliable
+  for an unpackaged app (registers bare `electron.exe`), so a Startup shortcut is used
+  instead.
+- **Docs:** new **USAGE.md** (every command, tray controls, the Toll Booth, and
+  troubleshooting); **README.md** refreshed (Toll Booth + M5 in status, `node:sqlite`
+  stack fix, documentation links); HANDOFF marked activated.
+- **Remaining:** watch observe-mode data, then flip tray → Toll booth → **Guard**;
+  outcome-stamping (offloaded count) and per-category toggles still open.
+
+---
+
 ## 2026-07-23 (later) — Toll Booth built: 6 modules shipped (M1–M6)
 
 **Supersedes the "nothing in the codebase changed" status in the entry below.**
