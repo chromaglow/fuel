@@ -91,7 +91,7 @@ node integrations/valve.mjs status     # check valve relocation (read-only)
 npx electron . --unhook                # emergency: undo the valve relocation, then exit
 ```
 
-Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow), the **Toll booth** (mode: observe/guard/off + sensitivity: careful/normal/eager), and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
+Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). **Auto-start (2026-07-23):** because fuel runs unpackaged, the tray "Launch at login" toggle is unreliable (it registers bare `electron.exe`); instead a **Startup shortcut** `…\Start Menu\Programs\Startup\fuel.lnk` launches `node_modules\electron\dist\electron.exe "<fuel dir>"` at login (single-instance lock prevents double-launch). Remove it via `shell:startup` or delete `fuel.lnk` to disable auto-start. Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow), the **Toll booth** (mode: observe/guard/off + sensitivity: careful/normal/eager), and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
 
 ---
 
