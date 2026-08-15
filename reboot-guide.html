@@ -1,0 +1,425 @@
+<style>
+  :root {
+    /* light — cool "paper next to an instrument panel" */
+    --bg: #e9eeee;
+    --panel: #ffffff;
+    --panel-2: #f4f8f8;
+    --ink: #16211f;
+    --muted: #566a6c;
+    --line: #d6dfdf;
+    --accent: #0a8ea2;
+    --accent-bright: #0fb0c8;
+    --accent-soft: rgba(15, 176, 200, 0.12);
+    --good: #0f9269;
+    --warn: #a96a06;
+    --bad: #bd4b3b;
+    --shadow: 0 1px 2px rgba(20, 40, 40, .06), 0 8px 24px rgba(20, 50, 55, .08);
+    --ring-track: #dbe4e4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0b1113;
+      --panel: #141d20;
+      --panel-2: #101819;
+      --ink: #e0eaeb;
+      --muted: #86a0a3;
+      --line: #22302f;
+      --accent: #4fd6e6;
+      --accent-bright: #74ecf7;
+      --accent-soft: rgba(79, 214, 230, 0.10);
+      --good: #5fe0a8;
+      --warn: #f0b45f;
+      --bad: #e88a78;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 40px rgba(0,0,0,.45);
+      --ring-track: #22302f;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #e9eeee; --panel: #ffffff; --panel-2: #f4f8f8; --ink: #16211f;
+    --muted: #566a6c; --line: #d6dfdf; --accent: #0a8ea2; --accent-bright: #0fb0c8;
+    --accent-soft: rgba(15,176,200,.12); --good: #0f9269; --warn: #a96a06; --bad: #bd4b3b;
+    --shadow: 0 1px 2px rgba(20,40,40,.06), 0 8px 24px rgba(20,50,55,.08); --ring-track: #dbe4e4;
+  }
+  :root[data-theme="dark"] {
+    --bg: #0b1113; --panel: #141d20; --panel-2: #101819; --ink: #e0eaeb;
+    --muted: #86a0a3; --line: #22302f; --accent: #4fd6e6; --accent-bright: #74ecf7;
+    --accent-soft: rgba(79,214,230,.10); --good: #5fe0a8; --warn: #f0b45f; --bad: #e88a78;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 12px 40px rgba(0,0,0,.45); --ring-track: #22302f;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(1100px 500px at 78% -8%, var(--accent-soft), transparent 60%),
+      var(--bg);
+    color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 40px 24px 72px; }
+
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", "Cascadia Mono", "SF Mono", Consolas, Menlo, monospace;
+  }
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    text-transform: uppercase;
+    letter-spacing: .22em;
+    font-size: 12px;
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  /* ---------- hero ---------- */
+  .hero {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 28px;
+    align-items: center;
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, var(--panel), var(--panel-2));
+    border-radius: 18px;
+    padding: 30px 32px;
+    box-shadow: var(--shadow);
+  }
+  h1 {
+    font-size: clamp(28px, 4.4vw, 40px);
+    line-height: 1.1;
+    margin: 12px 0 10px;
+    letter-spacing: -.015em;
+    text-wrap: balance;
+  }
+  h1 .lit { color: var(--accent); }
+  .lede { color: var(--muted); font-size: 17px; margin: 0; max-width: 46ch; }
+
+  .gauge { width: 132px; height: 132px; display: block; }
+  .gauge .arc { animation: sweep 1.1s ease-out both; }
+  @keyframes sweep { from { stroke-dashoffset: 300; } }
+  @media (prefers-reduced-motion: reduce) { .gauge .arc { animation: none; } }
+
+  /* ---------- summary strip ---------- */
+  .tldr {
+    display: flex; gap: 14px; align-items: flex-start;
+    margin: 22px 0 0;
+    padding: 16px 20px;
+    border-radius: 12px;
+    border: 1px dashed color-mix(in srgb, var(--accent) 45%, var(--line));
+    background: var(--accent-soft);
+  }
+  .tldr b { color: var(--ink); }
+  .tldr .k { color: var(--accent); font-weight: 700; }
+
+  section { margin-top: 40px; }
+  .sec-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 18px; }
+  h2 { font-size: 21px; margin: 0; letter-spacing: -.01em; }
+  .sec-head .n {
+    font-family: ui-monospace, Consolas, monospace;
+    color: var(--muted); font-size: 13px;
+  }
+
+  /* ---------- steps ---------- */
+  .steps { display: flex; flex-direction: column; gap: 14px; counter-reset: s; }
+  .step {
+    display: grid; grid-template-columns: 46px 1fr; gap: 18px;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 20px 22px; box-shadow: var(--shadow);
+  }
+  .step .num {
+    counter-increment: s;
+    width: 46px; height: 46px; border-radius: 12px;
+    display: grid; place-items: center;
+    font-family: ui-monospace, Consolas, monospace; font-weight: 700; font-size: 19px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  .step .num::before { content: counter(s); }
+  .step h3 { margin: 4px 0 6px; font-size: 17px; }
+  .step p { margin: 0 0 6px; color: var(--muted); }
+  .step p .ink { color: var(--ink); }
+
+  /* ---------- command block ---------- */
+  .cmd {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 9px;
+    padding: 10px 10px 10px 14px;
+    margin: 10px 0 4px;
+    overflow-x: auto;
+  }
+  .cmd code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13.5px; color: var(--ink); white-space: pre; flex: 1;
+  }
+  .cmd .prompt { color: var(--accent); user-select: none; }
+  .copy {
+    flex: none;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 6px;
+    padding: 5px 9px; cursor: pointer; transition: all .15s;
+  }
+  .copy:hover { color: var(--accent); border-color: var(--accent); }
+  .copy.ok { color: var(--good); border-color: var(--good); }
+  .copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------- checklist ---------- */
+  .check {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 8px 24px; box-shadow: var(--shadow);
+  }
+  .check li {
+    list-style: none; display: flex; gap: 13px; align-items: flex-start;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  .check li:last-child { border-bottom: 0; }
+  .check .tick {
+    flex: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 6px;
+    background: color-mix(in srgb, var(--good) 16%, transparent);
+    color: var(--good); display: grid; place-items: center; font-size: 13px; font-weight: 800;
+  }
+  .check ul { padding: 0; margin: 0; }
+  .check b { color: var(--ink); }
+  .check span { color: var(--muted); }
+
+  /* ---------- keycaps ---------- */
+  .keys { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .keyrow {
+    display: flex; gap: 12px; align-items: center;
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px 16px;
+  }
+  .combo { display: flex; gap: 5px; flex: none; }
+  kbd {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    background: var(--panel-2); color: var(--ink);
+    border: 1px solid var(--line); border-bottom-width: 2px;
+    border-radius: 6px; padding: 4px 8px; min-width: 20px; text-align: center;
+  }
+  .keyrow .what { color: var(--muted); font-size: 14.5px; }
+  .keyrow .what b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- troubleshooting ---------- */
+  .fixes { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 14px; }
+  .fix {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 14px; padding: 18px 20px; box-shadow: var(--shadow);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .fix .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .fix h3 { margin: 0; font-size: 15.5px; }
+  .fix p { margin: 0; color: var(--muted); font-size: 14.5px; }
+  .fix p b { color: var(--ink); font-weight: 600; }
+  .pill {
+    flex: none; font-family: ui-monospace, Consolas, monospace;
+    font-size: 10px; text-transform: uppercase; letter-spacing: .1em; font-weight: 600;
+    padding: 3px 8px; border-radius: 999px; white-space: nowrap;
+  }
+  .pill.normal { color: var(--accent); background: var(--accent-soft); }
+  .pill.warn   { color: var(--warn); background: color-mix(in srgb, var(--warn) 15%, transparent); }
+  .pill.bad    { color: var(--bad);  background: color-mix(in srgb, var(--bad) 15%, transparent); }
+  .pill.tip    { color: var(--good); background: color-mix(in srgb, var(--good) 15%, transparent); }
+
+  /* ---------- reassure footer ---------- */
+  .reassure {
+    margin-top: 40px; border-top: 1px solid var(--line); padding-top: 26px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px;
+  }
+  .reassure p { margin: 0; font-size: 14px; color: var(--muted); }
+  .reassure .h {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12px;
+    text-transform: uppercase; letter-spacing: .12em; color: var(--ink);
+    display: block; margin-bottom: 5px;
+  }
+  .reassure code {
+    font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+    color: var(--accent); background: var(--accent-soft);
+    padding: 1px 6px; border-radius: 5px;
+  }
+  .foot {
+    margin-top: 34px; text-align: center; color: var(--muted);
+    font-family: ui-monospace, Consolas, monospace; font-size: 11.5px; letter-spacing: .04em;
+  }
+
+  @media (max-width: 560px) {
+    .hero { grid-template-columns: 1fr; }
+    .gauge { justify-self: start; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="hero">
+    <div>
+      <div class="eyebrow">fuel · restart &amp; reboot guide</div>
+      <h1>Rebooting is safe. Here's how to get your <span class="lit">gauge</span> back.</h1>
+      <p class="lede">Turn your PC off and on all you want — nothing here breaks. When you're back, it's three easy steps to see fuel glowing again.</p>
+    </div>
+    <svg class="gauge" viewBox="0 0 120 120" role="img" aria-label="fuel gauge showing zero dollars">
+      <circle cx="60" cy="60" r="48" fill="none" stroke="var(--ring-track)" stroke-width="7"/>
+      <circle class="arc" cx="60" cy="60" r="48" fill="none" stroke="var(--accent)" stroke-width="7"
+              stroke-linecap="round" stroke-dasharray="82 300" stroke-dashoffset="0"
+              transform="rotate(135 60 60)"/>
+      <text x="60" y="58" text-anchor="middle" font-family="ui-monospace, Consolas, monospace"
+            font-size="20" font-weight="700" fill="var(--ink)">≈ $0</text>
+      <text x="60" y="74" text-anchor="middle" font-family="ui-monospace, Consolas, monospace"
+            font-size="7.5" letter-spacing="1.4" fill="var(--muted)">READY</text>
+    </svg>
+  </header>
+
+  <div class="tldr">
+    <span class="mono k">▸</span>
+    <div>
+      <b>The 30-second version:</b> after your PC restarts, open fuel's little window, glance at it to be sure it's awake, then use Claude Code like normal. From now on Claude quietly hands its boring jobs to <b>your</b> graphics card — and the gauge fills up.
+    </div>
+  </div>
+
+  <!-- STEPS -->
+  <section>
+    <div class="sec-head"><h2>After you reboot — do these in order</h2><span class="n">3 steps</span></div>
+    <div class="steps">
+
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>Open the little window</h3>
+          <p>Open <span class="ink">PowerShell</span> (tap the Start button, type <span class="mono">powershell</span>, press Enter) and paste this. The small see-through panel pops onto your desktop.</p>
+          <div class="cmd">
+            <span class="prompt mono">&gt;</span>
+            <code>cd "C:\dev\GitHub\fuel"; npx electron .</code>
+            <button class="copy" data-copy='cd "C:\dev\GitHub\fuel"; npx electron .'>copy</button>
+          </div>
+          <p>Don't see it? Press <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>F</kbd> — that shows or hides it.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>Check that it's awake</h3>
+          <p>Look at the <span class="ink">bottom line</span> of the panel. If you see real numbers like <span class="mono ink">2.1/16 GB · 40 W · 39°C</span>, the sensors are alive and everything's good. 🎉</p>
+          <p>If the ring is grey and says <span class="mono ink">OFFLINE</span>, your GPU brain (Ollama) just hasn't woken up yet — see the fixes below.</p>
+        </div>
+      </div>
+
+      <div class="step">
+        <div class="num"></div>
+        <div>
+          <h3>Just use Claude Code like normal</h3>
+          <p>That's it — no setup. The next time Claude does something mechanical (reformatting, repetitive edits), it sends the job to your graphics card instead of spending Claude. The ring lights up and the <span class="mono ink">≈ $</span> starts ticking.</p>
+          <p>It may sit at <span class="mono ink">$0.00</span> for a while — that's normal. It only counts <b class="ink">new</b> work, and the reboot gives Claude a fresh start automatically.</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- CHECKLIST -->
+  <section>
+    <div class="sec-head"><h2>Is everything OK? Tick these</h2></div>
+    <div class="check">
+      <ul>
+        <li><span class="tick">✓</span><div><b>The panel is on screen.</b> <span>You ran the command in Step 1 (or pressed Ctrl+Alt+F).</span></div></li>
+        <li><span class="tick">✓</span><div><b>The bottom line shows live GPU numbers.</b> <span>GB, watts, and °C are moving — sensors are working.</span></div></li>
+        <li><span class="tick">✓</span><div><b>It's not stuck on OFFLINE.</b> <span>If it is, open the Ollama app and wait a few seconds.</span></div></li>
+        <li><span class="tick">✓</span><div><b>Claude is still wired up.</b> <span>Run the check below — you want it to say <span class="mono">fully wired</span> in green.</span></div>
+        </li>
+      </ul>
+    </div>
+    <div class="cmd" style="margin-top:14px">
+      <span class="prompt mono">&gt;</span>
+      <code>cd "C:\dev\GitHub\fuel"; node integrations/install.mjs status</code>
+      <button class="copy" data-copy='cd "C:\dev\GitHub\fuel"; node integrations/install.mjs status'>copy</button>
+    </div>
+  </section>
+
+  <!-- CONTROLS -->
+  <section>
+    <div class="sec-head"><h2>Everyday controls</h2><span class="n">hold Ctrl+Alt</span></div>
+    <div class="keys">
+      <div class="keyrow">
+        <span class="combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>F</kbd></span>
+        <span class="what"><b>Show / hide</b> the panel</span>
+      </div>
+      <div class="keyrow">
+        <span class="combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>I</kbd></span>
+        <span class="what"><b>Grab &amp; move it</b> — press again to lock</span>
+      </div>
+      <div class="keyrow">
+        <span class="combo"><kbd>Ctrl</kbd><kbd>Alt</kbd><kbd>Q</kbd></span>
+        <span class="what"><b>Quit</b> fuel completely</span>
+      </div>
+      <div class="keyrow">
+        <span class="combo"><kbd>tray</kbd></span>
+        <span class="what"><b>Right-click the tray icon</b> (bottom-right of your screen) for the full menu</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- TROUBLESHOOTING -->
+  <section>
+    <div class="sec-head"><h2>When something looks off</h2></div>
+    <div class="fixes">
+
+      <div class="fix">
+        <div class="top"><h3>I can't find the window</h3><span class="pill normal">hidden</span></div>
+        <p>Press <b>Ctrl+Alt+F</b>. Still nothing? Right-click the tray icon → <b>Show HUD</b>. It may have opened on another monitor — tray → <b>Move to display</b>.</p>
+      </div>
+
+      <div class="fix">
+        <div class="top"><h3>The ring is grey / says OFFLINE</h3><span class="pill bad">offline</span></div>
+        <p>Your GPU brain (<b>Ollama</b>) isn't running yet. Open the <b>Ollama app</b> from the Start menu and wait a few seconds — the ring comes back to life on its own.</p>
+      </div>
+
+      <div class="fix">
+        <div class="top"><h3>It still says $0.00</h3><span class="pill normal">normal</span></div>
+        <p>Not broken! It only counts <b>new</b> work sent to your GPU. It fills the first time Claude does a mechanical job. Give it time, or ask Claude to do some repetitive edits.</p>
+      </div>
+
+      <div class="fix">
+        <div class="top"><h3>It's in the way / I can't click it</h3><span class="pill normal">click-thru</span></div>
+        <p>On purpose — your clicks pass right through it. Press <b>Ctrl+Alt+I</b> to grab and drag it somewhere out of the way, then press it again to lock it back down.</p>
+      </div>
+
+      <div class="fix">
+        <div class="top"><h3>The numbers look frozen</h3><span class="pill warn">stuck</span></div>
+        <p>Close it with <b>Ctrl+Alt+Q</b> and start it again (Step 1). If the whole PC feels weird, a full reboot fixes it — and fuel is happy to be restarted.</p>
+      </div>
+
+      <div class="fix">
+        <div class="top"><h3>I hate typing the command each time</h3><span class="pill tip">tip</span></div>
+        <p>Right-click the tray icon → tick <b>Launch at login</b>. fuel will start by itself every time you turn the PC on — no command needed ever again.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- REASSURE -->
+  <div class="reassure">
+    <p><span class="h">Your setup is untouched</span>The advanced "Valve" is switched <b>off</b>, so rebooting changes nothing about how Ollama runs. You don't need to fix anything there.</p>
+    <p><span class="h">$0 each morning is normal</span>The dollar figure resets at midnight and yesterday isn't lost — it's just showing <b>today's</b> gauge.</p>
+    <p><span class="h">The undo button</span>If anything ever feels wrong with Claude itself, this puts your settings back exactly as they were: <code>node integrations/install.mjs uninstall</code></p>
+  </div>
+
+  <div class="foot">fuel · local offload telemetry · you've got this</div>
+
+</div>
+
+<script>
+  document.querySelectorAll('.copy').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var text = btn.getAttribute('data-copy');
+      navigator.clipboard.writeText(text).then(function () {
+        var prev = btn.textContent;
+        btn.textContent = 'copied';
+        btn.classList.add('ok');
+        setTimeout(function () { btn.textContent = prev; btn.classList.remove('ok'); }, 1400);
+      });
+    });
+  });
+</script>
