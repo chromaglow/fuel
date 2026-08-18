@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import type {
   CatchStats,
+  EvictionEvent,
   HudPhase,
   HudState,
   Nudge,
@@ -10,7 +11,10 @@ import type {
   OffloadEvent,
   RecentEvent,
   ReceiptRecord,
+  ResidentModel,
   Sample,
+  Tenant,
+  TenantTotals,
 } from '@shared/types'
 import {
   DEFAULT_DAILY_GOAL_USD,
@@ -30,8 +34,10 @@ import {
 } from './window.js'
 import { createTray } from './tray.js'
 import { GpuMonitor } from './sensors/nvidiaSmi.js'
-import { pingOllama, readResident, readTags } from './sensors/ollamaApi.js'
+import { pingOllama, readResidents, readTags } from './sensors/ollamaApi.js'
 import { OllamaLogTailer } from './sensors/ollamaLog.js'
+import { EvictionDetector } from './sensors/evictions.js'
+import { inferModel, loadTenants, tenantById, tenantForIp, tenantForModel } from './tenants.js'
 import { Collector } from './collector/server.js'
 import { Reconciler } from './collector/reconcile.js'
 import { drainSpool } from './collector/spool.js'
@@ -41,7 +47,7 @@ import type { DecidePayload, GateMode } from './nudge/gate.js'
 import type { Aggressiveness } from './nudge/sorter.js'
 import { Valve } from './proxy/server.js'
 import { Watchdog } from './proxy/watchdog.js'
-import { loadPricing, tokensPerSecond, usdForDay } from './metrics.js'
+import { loadPricing, rateModelForTenant, tokensPerSecond, usdForTenant } from './metrics.js'
 import { UPSTREAM_URL } from '@shared/constants'
 
 function dataDir(): string {
@@ -80,11 +86,50 @@ let nudgeMode: NudgeMode = 'shadow'
 let tollMode: GateMode = 'observe'
 let tollLevel: Aggressiveness = 'normal'
 
+// Enforce mode: how long after a completed delegation writes pass the gate,
+// so the delegated result (and its sibling files) can land without re-denial.
+const ENFORCE_GRACE_MS = 10 * 60_000
+
 let utilHistory: number[] = []
 let logBusy = false
 let lastTokPerSec: number | null = null
 let truncationWarning = false
 let installedModels: string[] = []
+
+/**
+ * The most recent /api/ps view, tenant-tagged. Shared between the sampler
+ * (which refreshes it every tick) and the log-event attributor (which uses it
+ * to infer which model a caller hit when the caller declares none).
+ */
+let residents: ResidentModel[] = []
+const evictions = new EvictionDetector()
+
+/**
+ * Observed keep-alive per model. A request moves `expires_at` forward; the
+ * distance it lands from "now" is the keep-alive actually in force for that
+ * caller. Remembered across ticks so a resident shows its policy even between
+ * requests, and reset when the model leaves (a new load may carry a new one).
+ */
+const keepAliveByModel = new Map<string, number>()
+let prevExpiresAt = new Map<string, number>()
+
+function observeKeepAlive(now: number, ps: readonly { name: string; expiresAt: number | null }[]): void {
+  const next = new Map<string, number>()
+  for (const r of ps) {
+    if (r.expiresAt == null) continue
+    next.set(r.name, r.expiresAt)
+    const before = prevExpiresAt.get(r.name)
+    // A forward jump of more than a tick means a request just landed. Ollama's
+    // expiry math is coarse (seconds), so round to whole seconds.
+    if (before != null && r.expiresAt > before + 2_000) {
+      keepAliveByModel.set(r.name, Math.round((r.expiresAt - now) / 1000))
+    }
+  }
+  for (const name of keepAliveByModel.keys()) {
+    if (!next.has(name)) keepAliveByModel.delete(name)
+  }
+  prevExpiresAt = next
+}
 
 /** Throttle the "is Ollama up?" ping when no model is resident. */
 const PING_INTERVAL_MS = 5000
@@ -112,7 +157,9 @@ function loadSettings(): void {
   const mode = store.getMeta('nudge.mode')
   if (mode === 'shadow' || mode === 'live' || mode === 'off') nudgeMode = mode
   const tMode = store.getMeta('toll.mode')
-  if (tMode === 'observe' || tMode === 'guard' || tMode === 'off') tollMode = tMode
+  if (tMode === 'observe' || tMode === 'guard' || tMode === 'enforce' || tMode === 'off') {
+    tollMode = tMode
+  }
   const tLevel = store.getMeta('toll.level')
   if (tLevel === 'off' || tLevel === 'careful' || tLevel === 'normal' || tLevel === 'eager') {
     tollLevel = tLevel
@@ -250,16 +297,16 @@ function setInteractive(on: boolean): void {
 
 function derivePhase(
   online: boolean,
-  resident: boolean,
+  anyResident: boolean,
   busy: boolean,
   gpuUtil: number,
 ): HudPhase {
   if (!online) return 'offline'
-  // A request in flight with nothing resident means we're paying the ~33 s
-  // cold start (SPEC.md §2.3).
-  if (busy && !resident) return 'warming'
-  if (resident && (busy || gpuUtil > 25)) return 'generating'
-  if (resident) return 'idle-resident'
+  // A request in flight with nothing resident means someone is paying a cold
+  // start right now (SPEC.md §2.3).
+  if (busy && !anyResident) return 'warming'
+  if (anyResident && (busy || gpuUtil > 25)) return 'generating'
+  if (anyResident) return 'idle-resident'
   return 'idle-evicted'
 }
 
@@ -269,19 +316,39 @@ async function collect(): Promise<void> {
   // GPU stats come from a long-lived `nvidia-smi --loop` process, so this is
   // just a field read rather than a process spawn.
   const gpu = gpuMon?.latest() ?? null
-  const resident = await readResident()
+  const ps = await readResidents()
 
-  // readResident() returns null both when idle and when Ollama is down. A model
-  // being resident proves Ollama is up for free; only when nothing is loaded do
-  // we need a ping to tell "idle" from "down" — and that's the common desktop
-  // state, so throttle it to every 5 s rather than firing an HTTP call/second.
-  let online = resident != null
+  // readResidents() is null when Ollama is down and [] when it is up but idle.
+  // Anything resident proves Ollama is up for free; only when nothing is loaded
+  // do we need a ping to tell "idle" from "down" — the common desktop state, so
+  // throttle it to every 5 s rather than firing an HTTP call per second.
+  let online = ps != null
   if (!online) {
     if (now - lastPingAt >= PING_INTERVAL_MS) {
       lastPingAt = now
       lastPingOk = await pingOllama()
     }
     online = lastPingOk
+  }
+
+  // Tag each resident with its tenant. Only advance the residency view when
+  // Ollama actually answered — a transient timeout must not read as "everyone
+  // was evicted" and spray false contention events.
+  if (ps != null) {
+    observeKeepAlive(now, ps)
+    residents = ps.map((r) => ({
+      ...r,
+      tenant: tenantForModel(r.name),
+      keepAliveSec: keepAliveByModel.get(r.name) ?? null,
+    }))
+    for (const ev of evictions.observe(residents, now)) {
+      store.insertEviction(ev)
+      console.log(
+        `[fuel] eviction: ${ev.model} (${ev.tenant?.label ?? 'unknown'}) left ` +
+          `${Math.round(ev.earlyByMs / 1000)}s early` +
+          (ev.evictedBy ? ` — displaced by ${ev.evictedBy}` : ''),
+      )
+    }
   }
 
   const util = gpu?.utilGpu ?? 0
@@ -299,37 +366,100 @@ async function collect(): Promise<void> {
     tempC: gpu?.tempC ?? null,
     powerW: gpu?.powerW ?? null,
     smClockMhz: gpu?.smClockMhz ?? null,
-    modelResident: resident?.name ?? null,
-    modelVramBytes: resident?.sizeVram ?? null,
-    evictAt: resident?.expiresAt ?? null,
+    residents,
   }
   store.insertSample(sample)
 
   const today = store.todayTotals()
-  const evictInSec =
-    resident?.expiresAt != null
-      ? Math.max(0, Math.round((resident.expiresAt - now) / 1000))
-      : null
+  const byTenant = tenantTotals()
 
   const state: HudState = {
     ts: now,
-    phase: derivePhase(online, resident != null, logBusy, util),
+    phase: derivePhase(online, residents.length > 0, logBusy, util),
     ollama: online ? 'online' : 'offline',
     gpu,
-    resident,
-    evictInSec,
+    residents,
+    evictionsToday: store.todayEvictionCount(),
     today,
-    usdToday: usdForDay(today),
+    // The honest sum: each tenant at its own counterfactual rate.
+    usdToday: byTenant.reduce((a, t) => a + t.usd, 0),
+    byTenant,
     utilHistory: [...utilHistory],
     tokPerSec: lastTokPerSec,
     truncationWarning,
-    contextLength: resident?.contextLength ?? null,
     goalUsd,
     unburnedToday: nudgeMode === 'off' ? 0 : store.todayNudgeCount(),
     nudgeMode,
   }
 
   win?.webContents.send('fuel:state', state)
+}
+
+/**
+ * Today's work per tenant, each priced against its own counterfactual Claude
+ * model. Shim clients ('claude-code', 'claude-desktop') are your own offloads
+ * and fold into the `local` tenant; log events carry a tenant id; NULL is the
+ * unattributed bucket, priced at the default rate and labelled as such rather
+ * than hidden. Sorted by dollars, unattributed last.
+ */
+function tenantTotals(): TenantTotals[] {
+  const merged = new Map<string | null, TenantTotals>()
+  for (const r of store.todayTotalsByClient()) {
+    let tenant: Tenant | null = null
+    if (r.client === 'claude-code' || r.client === 'claude-desktop') {
+      tenant = tenantForIp('127.0.0.1') ?? { id: 'local', label: 'this PC' }
+    } else if (r.client != null) {
+      tenant = tenantById(r.client) ?? { id: r.client, label: r.client }
+    }
+    const key = tenant?.id ?? null
+    const cur = merged.get(key) ?? {
+      tenant,
+      tasks: 0,
+      promptTokens: 0,
+      evalTokens: 0,
+      usd: 0,
+      rateModel: rateModelForTenant(key),
+    }
+    cur.tasks += r.tasks
+    cur.promptTokens += r.promptTokens
+    cur.evalTokens += r.evalTokens
+    merged.set(key, cur)
+  }
+  const out = [...merged.values()].map((t) => ({
+    ...t,
+    usd: usdForTenant(t.tenant?.id ?? null, t.promptTokens, t.evalTokens),
+  }))
+  out.sort((a, b) => {
+    if (a.tenant == null) return 1
+    if (b.tenant == null) return -1
+    return b.usd - a.usd
+  })
+  return out
+}
+
+/**
+ * Human label for a stored event's originator. Shim clients keep their own
+ * name; log events carry a tenant id; failing both, fall back to whoever owns
+ * the model, and finally to null so the panel can say "unattributed" honestly.
+ */
+function whoLabel(client: string | null, model: string): string | null {
+  return tenantForModel(model)?.label ?? client
+}
+
+/**
+ * Give a log-sourced event its tenant and best-effort model before it enters
+ * the reconciler. The log line knows the caller IP but not the model; the
+ * registry knows who the IP is and (sometimes) what they run; /api/ps knows
+ * what is loaded right now. Together that is enough to stop everything
+ * landing as `unknown`.
+ */
+function attributeLogEvent(e: OffloadEvent): OffloadEvent {
+  const tenant = tenantForIp(e.clientIp)
+  return {
+    ...e,
+    client: tenant?.id ?? null,
+    model: e.model === 'unknown' ? inferModel(e.clientIp, residents) : e.model,
+  }
 }
 
 /**
@@ -369,14 +499,16 @@ function startSensors(): void {
         level: tollLevel,
         mode: tollMode,
         record: (r, ev) => store.insertReceipt(toReceiptRecord(r, ev)),
+        inGrace: (store.lastOkDelegationAt() ?? 0) > Date.now() - ENFORCE_GRACE_MS,
       }),
   )
   collector.start()
 
-  // Phase A: the log tailer sees every inference but can't attribute it. The
-  // reconciler merges the two so a single offload is counted once.
+  // Phase A: the log tailer sees every inference (local and LAN) and keeps the
+  // caller IP; attribution happens here, then the reconciler merges it with any
+  // shim record for the same call so a single offload is counted once.
   tailer = new OllamaLogTailer()
-  tailer.on('event', (e) => reconciler?.onLog(e))
+  tailer.on('event', (e) => reconciler?.onLog(attributeLogEvent(e)))
   tailer.on('busy', (b) => {
     logBusy = b
   })
@@ -409,6 +541,8 @@ function registerIpc(): void {
     return store.recentEvents(RECENT_EVENT_LIMIT).map((r) => ({
       startedAt: Number(r.started_at),
       status: String(r.status),
+      who: whoLabel(r.client != null ? String(r.client) : null, String(r.model ?? 'unknown')),
+      model: String(r.model ?? 'unknown'),
       promptTokens: r.prompt_tokens != null ? Number(r.prompt_tokens) : null,
       evalTokens: r.eval_tokens != null ? Number(r.eval_tokens) : null,
       tokPerSec: tokensPerSecond(Number(r.eval_tokens ?? 0), Number(r.eval_ns ?? 0)),
@@ -424,6 +558,10 @@ function registerIpc(): void {
 
   ipcMain.handle('fuel:recent-receipts', (): ReceiptRecord[] =>
     store.recentReceipts(RECENT_EVENT_LIMIT),
+  )
+
+  ipcMain.handle('fuel:recent-evictions', (): EvictionEvent[] =>
+    store.recentEvictions(RECENT_EVENT_LIMIT),
   )
 
   ipcMain.on('fuel:quit', () => app.quit())
@@ -453,6 +591,7 @@ if (!app.requestSingleInstanceLock()) {
   app.whenReady().then(() => {
     const dir = dataDir()
     loadPricing(dir)
+    loadTenants(dir)
     store = new Store(join(dir, 'fuel.db'))
     loadSettings()
 
@@ -477,9 +616,12 @@ if (!app.requestSingleInstanceLock()) {
     tray = createTray(win, {
       isInteractive: () => interactive,
       setInteractive,
-      isOpenAtLogin: () => app.getLoginItemSettings().openAtLogin,
+      // In dev, process.execPath is the bare electron binary — it needs the app
+      // path as an argument or the login item launches an empty Electron shell.
+      isOpenAtLogin: () =>
+        app.getLoginItemSettings({ args: [app.getAppPath()] }).openAtLogin,
       setOpenAtLogin: (on) =>
-        app.setLoginItemSettings({ openAtLogin: on, args: [] }),
+        app.setLoginItemSettings({ openAtLogin: on, args: [app.getAppPath()] }),
       moveToDisplay: (id) => win && moveToDisplay(win, store, id),
       listDisplays: () => (win ? listDisplays(win) : []),
       nudgeMode: () => nudgeMode,

@@ -6,6 +6,96 @@ decided. Newest entry on top. This is the narrative companion to
 
 ---
 
+## 2026-08-18 — fuel becomes a multi-tenant GPU instrument (layers 1–3)
+
+**Where it started.** Ezra: "fuel doesn't seem to be firing" and "the PC locks up
+for minutes sometimes." Both turned out to be the same story, and neither was what it
+looked like.
+
+**What we found (M0, in order):**
+
+1. fuel *was* firing — 13,658 log events in 14 days at ~110 tok/s. What went quiet was
+   Ezra's own offloading (16 coder calls in two weeks); the headline "offloaded" counter is
+   fed by shim receipts, so heavy DJ traffic never moved it.
+2. WEYLD's DJ (`llama3.1:8b`, called from the Jetson ~1,500×/day) and fuel's coder
+   (`qwen2.5-coder:14b`) **could not co-reside**: 7.0 + 11 GB on a 16 GB card. Every
+   delegation evicted the DJ, every pick evicted the coder — 40–96 cold starts/day, and
+   on the worst morning 36–51 s coder loads. The two worst swap-storm hours in fuel's own
+   DB (08-12 05h, 08-18 09h) line up exactly with Windows shell-hang events. That was
+   the freeze.
+3. fuel could not *show* any of this: `HudState.resident` was singular (`models[0]`),
+   phase was a one-model lifecycle, log events were `client:null model:'unknown'`
+   with the comment "every client is 127.0.0.1" — false since Ollama went on the LAN
+   on 08-04. The GIN line carries the caller IP; fuel threw it away.
+
+**Fixes to the workload first (M1–M3):** coder → `qwen2.5-coder:7b` (5.6 GB); DJ
+`numCtx` 16384 → 8192 (5.9 GB, prompt is ~3.9k so still 2× headroom, 4/4 picks still
+made a discovery tool call). Both resident, coder warm-loads in 0.14 s, DJ's next pick
+paid no reload. **Then the correction Ezra asked for:** don't band-aid; make the
+instrument tell the truth.
+
+**Layer 1 — truth.** Tenants (`config/tenants.json`: byIp for requests, byModel for
+residents; per-machine override merged). `residents[]` from every `/api/ps` row,
+tenant-tagged, with `sizeTotal` vs `sizeVram` (CPU-split alarm) and observed
+`keepAliveSec`. `EvictionDetector` (tested): a resident leaving >5 s before its own
+`expires_at` is contention; a newcomer within 20 s gets the blame; deadline timeouts
+are not evictions. Log events keep `clientIp`, get `client` = tenant id and an
+inferred model. UI: header names tenants; **VRAM budget bar** (segments per tenant,
+"other" for the desktop, free; amber < 2 GB; hatched + red edge for a CPU-split
+resident); footer `evicted N ✓/⚠`; panel: per-resident rows, reloads vs evictions,
+contention log, recent tasks labelled by tenant. **Ring laps** (Ezra's ask): one ring,
+each lap of the daily goal advances red → yellow → orange → green → blue; the purple
+overflow ring is gone.
+
+**Layer 2 — policy.** `OLLAMA_KEEP_ALIVE=1h` at the Ollama layer (user env var). Every
+caller that sends no keep-alive — subwave does not — inherits it; the DJ's 40–80
+self-reloads/day are gone; the Valve's 127.0.0.1-only pin stops mattering for the LAN
+tenant. fuel shows the keep-alive each resident *actually* gets, not the config.
+
+**Layer 3 — economics.** Each tenant priced at its own counterfactual Claude model
+(`pricing.json` → `tenants`): DJ @ `claude-sonnet-5` (what it was really billed to on
+08-13), local/unattributed @ default, embed null. Headline = the sum. First-day
+effect: **≈$7.84 → ≈$4.85** — the DJ had been priced at Opus. Lower, and honest.
+`scripts/backfill-client-ip.py` re-attributed 4,967 older events from Ollama's logs.
+
+**Gotchas paid for today (all recorded in HANDOFF.md):**
+
+- `SetEnvironmentVariable(...,'User')` doesn't touch the current shell; Ollama launched
+  from that shell came up with `OLLAMA_KEEP_ALIVE:5m0s`. Read `server.log`, not the
+  registry.
+- `Stop-Process ollama` orphans `llama-server.exe` runners that keep their VRAM. Three
+  orphans → the DJ's next load landed **45 % on the CPU** (18/33 layers). This is the
+  freeze mechanism, caused by the fix. fuel now flags it; kill runners whose parent
+  isn't the live `ollama.exe`.
+- A Claude session keeps the shim it started with: a delegation from a pre-switch
+  session loaded the 14b and evicted the DJ — the detector's first real catch
+  (`llama3.1:8b 3569 s early ← qwen2.5-coder:14b`).
+- Real headroom with both models is ~2 GB, not 4.5: the desktop holds ~2.6 GB. Room
+  for the embed model, not a third LLM.
+- The debug-endpoint regexes first used to read WEYLD's ring buffer produced wrong
+  dates (a hard-coded `08-13`) and briefly a wrong story ("DJ on sonnet for a day").
+  Ollama's own logs on the PC settled it: the DJ was on llama the whole time. Parse
+  JSON on the Jetson side; never regex a 1.3 MB payload with duplicate keys.
+- Earlier claim corrected: `samples.ts` is `INTEGER PRIMARY KEY` — the startup
+  `prune()` was never a full scan.
+
+**Numbers to check tomorrow (M4 soak):** `evicted 0 ✓` all day; reloads in the panel
+near zero; no shell-hang events; the DJ's row shows `ka 1h`.
+
+---
+
+## 2026-07-24 — Toll Booth enforce mode; Desktop findings
+
+- **Enforce** added to the gate: clearly-local writes are *denied* (not just advised)
+  unless a delegation completed within a 10-min grace window, so the delegated result
+  can land. `precheck.cjs` returns the deny; tray exposes the mode; tests cover the
+  grace path.
+- **FIXES.md**: full findings on why offload wasn't reaching Claude Desktop, resolved
+  by moving the policy into the shim itself (`route_check` + self-advertising tool
+  descriptions). `integrations/DESKTOP-INSTRUCTIONS.md`: optional paste-in reinforcement.
+
+---
+
 ## 2026-07-23 (activation) — Toll Booth activated + usage docs
 
 - **Activated** in **observe** mode: restarted the app on the new build (`/decide`

@@ -4,23 +4,25 @@ import { RECONCILE_WINDOW_MS } from '@shared/constants'
 /**
  * Merges the two views of a single local inference.
  *
- * The log tailer (Phase A) sees every `/api/generate` but every client is
- * 127.0.0.1 — it proves work happened, not who asked. The MCP shim (Phase C)
- * POSTs a richer record for the calls it made: exact prompt tokens, the client
- * that asked, and the `num_ctx` it requested. Left alone the two would
- * double-count every offload.
+ * The log tailer (Phase A) sees every `/api/generate` and `/api/chat` the
+ * local Ollama serves — from this machine and from LAN tenants such as the
+ * WEYLD Jetson — with the caller IP but no model name or token detail. The
+ * MCP shim (Phase C) POSTs a richer record for the calls fuel itself made:
+ * exact prompt tokens, the client that asked, and the `num_ctx` it requested.
+ * Left alone the two would double-count every shim offload.
  *
  * The reconciler pairs them. An MCP record is authoritative and is committed
  * immediately; a log record waits briefly to see whether an MCP record claims
  * the same inference, and is committed on its own only if none does (a direct
  * `ollama run`, another tool, etc.).
  *
- * Correlation key: identical `evalTokens` within the window. This box runs one
- * generation at a time (single model, single slot, too little VRAM headroom
- * for a second), so at most one pair is ever in flight — but keying on token
- * count keeps it correct even if that ever stops holding. When a log record
- * has no token count (parse miss), it falls back to time-only pairing, which
- * the serialization guarantee makes safe.
+ * Correlation key: identical `evalTokens` within the window. Two tenants can
+ * now be resident and generating close together (the DJ picks every few
+ * minutes; a shim call can land mid-pick), so the token-count match is what
+ * keeps a DJ log record from being swallowed by a shim record that merely
+ * finished nearby. When a log record has no token count (parse miss) it falls
+ * back to time-only pairing — rare, and worst case one event is under-counted
+ * rather than double-counted.
  */
 export class Reconciler {
   private pendingLog = new Map<number, { event: OffloadEvent; timer: unknown }>()

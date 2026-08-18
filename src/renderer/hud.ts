@@ -1,4 +1,12 @@
-import type { CatchStats, HudState, Nudge, ReceiptRecord, RecentEvent } from '../shared/types.js'
+import type {
+  CatchStats,
+  EvictionEvent,
+  HudState,
+  Nudge,
+  ReceiptRecord,
+  RecentEvent,
+  ResidentModel,
+} from '../shared/types.js'
 import { TOK_PER_SEC_REDLINE, UTIL_HISTORY_LEN } from '../shared/constants.js'
 import { GAUGE_SIZE, lerp } from './theme.js'
 import { drawRing } from './gauges/ring.js'
@@ -6,10 +14,13 @@ import { drawArc } from './gauges/arc.js'
 import { drawSparkline } from './gauges/sparkline.js'
 import {
   renderPanelCatch,
+  renderPanelEvictions,
   renderPanelNudges,
   renderPanelReceipts,
   renderPanelRows,
   renderPanelTasks,
+  renderPanelTenants,
+  tenantClass,
 } from './panel.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
@@ -22,11 +33,15 @@ const el = {
   tokens: $('tokens'),
   tps: $('tps'),
   hw: $('hw'),
-  ctx: $('ctx'),
+  evictions: $('evictions'),
   unburned: $('unburned'),
+  vramBar: $('vram-bar'),
+  vramLegend: $('vram-legend'),
   nudgeHeading: $('nudge-heading'),
   panelRows: $('panel-rows'),
+  panelTenants: $('panel-tenants'),
   panelTasks: $('panel-tasks'),
+  panelEvictions: $('panel-evictions'),
   panelCatch: $('panel-catch'),
   panelReceipts: $('panel-receipts'),
   panelNudges: $('panel-nudges'),
@@ -160,12 +175,97 @@ function fmtCountdown(sec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 }
 
+const GB = 1024 ** 3
+
 const PHASE_LABEL: Record<HudState['phase'], string> = {
   offline: 'ollama offline',
-  'idle-evicted': 'not loaded',
+  'idle-evicted': 'nothing loaded',
   'idle-resident': 'resident',
   warming: 'warming up…',
   generating: 'generating',
+}
+
+/**
+ * Who is on the card. One resident: "WEYLD DJ · llama3.1:8b". Several: just
+ * the tenants, "coder + WEYLD DJ" — the model names live in the panel, and the
+ * 320 px header cannot fit both without truncating the second tenant, which
+ * is the one thing this line must never do.
+ */
+function residentsHeadline(rs: ResidentModel[], online: boolean): string {
+  if (rs.length === 0) return online ? 'no model loaded' : '—'
+  if (rs.length === 1) {
+    const r = rs[0]!
+    return r.tenant ? `${r.tenant.label} · ${r.name}` : r.name
+  }
+  return rs.map((r) => r.tenant?.label ?? r.name).join(' + ')
+}
+
+/** Soonest keep-alive expiry across residents, for the status line. */
+function nextEvictIn(rs: ResidentModel[], now: number): { name: string; sec: number } | null {
+  let best: { name: string; sec: number } | null = null
+  for (const r of rs) {
+    if (r.expiresAt == null) continue
+    const sec = Math.max(0, Math.round((r.expiresAt - now) / 1000))
+    if (!best || sec < best.sec) best = { name: r.tenant?.label ?? r.name, sec }
+  }
+  return best
+}
+
+/**
+ * The VRAM budget bar: total card memory, segmented by resident model in its
+ * tenant's colour, then whatever else the driver reports in use, then free.
+ * This is the one picture that shows "do these two fit" without arithmetic.
+ */
+function renderVram(s: HudState): void {
+  const total = s.gpu?.memTotalMb ?? 0
+  if (!total) {
+    el.vramBar.innerHTML = ''
+    el.vramLegend.textContent = ''
+    return
+  }
+  const usedMb = s.gpu?.memUsedMb ?? 0
+  const residentMb = s.residents.reduce((a, r) => a + r.sizeVram / 1024 ** 2, 0)
+  const otherMb = Math.max(0, usedMb - residentMb)
+  const freeMb = Math.max(0, total - usedMb)
+  // "Tight" = less than one small model's worth of headroom left; the next
+  // load will evict someone.
+  const tight = freeMb < 2048
+
+  const seg = (cls: string, mb: number, title: string): string =>
+    mb > 0
+      ? `<div class="seg ${cls}" style="width:${((mb / total) * 100).toFixed(2)}%" title="${title}"></div>`
+      : ''
+
+  // A resident whose total exceeds what is in VRAM is running partly on the
+  // CPU. Its segment gets the split style and the legend says how much.
+  const split = (r: ResidentModel): number =>
+    r.sizeTotal > r.sizeVram * 1.01 ? Math.round((1 - r.sizeVram / r.sizeTotal) * 100) : 0
+  const anySplit = s.residents.some((r) => split(r) > 0)
+
+  el.vramBar.className = [tight ? 'tight' : '', anySplit ? 'split' : ''].join(' ').trim()
+  el.vramBar.innerHTML =
+    s.residents
+      .map((r) =>
+        seg(
+          `${tenantClass(r.tenant)}${split(r) ? ' cpu-split' : ''}`,
+          r.sizeVram / 1024 ** 2,
+          `${r.name} · ${(r.sizeVram / GB).toFixed(1)} GB` +
+            (split(r) ? ` in VRAM · ${split(r)}% ON CPU` : ''),
+        ),
+      )
+      .join('') + seg('other', otherMb, `other (driver, desktop) · ${(otherMb / 1024).toFixed(1)} GB`)
+
+  const legend = s.residents.map((r) => {
+    const pct = split(r)
+    return (
+      `<span class="lg ${tenantClass(r.tenant)}${pct ? ' cpu-split' : ''}">` +
+      `${r.tenant?.label ?? r.name} ${(r.sizeVram / GB).toFixed(1)}${pct ? ` · ${pct}% cpu ⚠` : ''}</span>`
+    )
+  })
+  legend.push(
+    `<span class="lg free${tight ? ' tight' : ''}">free ${(freeMb / 1024).toFixed(1)} / ${(total / 1024).toFixed(0)} GB</span>`,
+  )
+  el.vramLegend.innerHTML = legend.join('')
 }
 
 function render(s: HudState): void {
@@ -177,14 +277,17 @@ function render(s: HudState): void {
   }
   document.body.classList.add(`phase-${s.phase}`)
 
-  el.model.textContent =
-    s.resident?.name ?? (s.ollama === 'online' ? 'no model loaded' : '—')
+  el.model.textContent = residentsHeadline(s.residents, s.ollama === 'online')
 
   const label = PHASE_LABEL[s.phase]
-  el.status.textContent =
-    s.evictInSec != null && s.phase === 'idle-resident'
-      ? `${label} · evict in ${fmtCountdown(s.evictInSec)}`
+  const next = s.phase === 'idle-resident' ? nextEvictIn(s.residents, s.ts) : null
+  el.status.textContent = next
+    ? `${s.residents.length} resident · ${next.name} evicts in ${fmtCountdown(next.sec)}`
+    : s.residents.length > 1
+      ? `${label} · ${s.residents.length} resident`
       : label
+
+  renderVram(s)
 
   el.usd.textContent = `≈ $${s.usdToday.toFixed(2)}`
   el.tokens.textContent = `${fmtTokens(s.today.evalTokens + s.today.promptTokens)} tok`
@@ -210,16 +313,23 @@ function render(s: HudState): void {
       ? `${s.unburnedToday} unburned`
       : ''
 
-  if (s.truncationWarning) {
-    el.ctx.textContent = 'truncated ⚠'
-    el.ctx.className = 'warn'
-  } else if (s.contextLength != null) {
-    const small = s.contextLength <= 4096
-    el.ctx.textContent = `ctx ${fmtTokens(s.contextLength)}${small ? ' ⚠' : ' ✓'}`
-    el.ctx.className = small ? 'warn' : 'ok'
+  // Contention is the headline health signal for a shared card: zero evictions
+  // means the budget holds; anything else means someone got shoved out today.
+  // Two things outrank it: a truncated context (correctness), and a resident
+  // running partly on the CPU (the freeze, happening right now).
+  const cpuSplit = s.residents.find((r) => r.sizeTotal > r.sizeVram * 1.01)
+  if (cpuSplit) {
+    el.evictions.textContent = `${cpuSplit.tenant?.label ?? cpuSplit.name} on CPU ⚠`
+    el.evictions.className = 'warn'
+  } else if (s.truncationWarning) {
+    el.evictions.textContent = 'truncated ⚠'
+    el.evictions.className = 'warn'
+  } else if (s.evictionsToday > 0) {
+    el.evictions.textContent = `evicted ${s.evictionsToday} ⚠`
+    el.evictions.className = 'warn'
   } else {
-    el.ctx.textContent = ''
-    el.ctx.className = ''
+    el.evictions.textContent = 'evicted 0 ✓'
+    el.evictions.className = 'ok'
   }
 
   anim.ringTarget = s.goalUsd > 0 ? s.usdToday / s.goalUsd : 0
@@ -231,6 +341,7 @@ function render(s: HudState): void {
 
   if (document.body.classList.contains('expanded')) {
     renderPanelRows(el.panelRows, s)
+    renderPanelTenants(el.panelTenants, s.byTenant)
   }
 
   kick()
@@ -246,18 +357,26 @@ window.fuel.onExpanded(async (next) => {
   if (!next) return
   if (state) {
     renderPanelRows(el.panelRows, state)
+    renderPanelTenants(el.panelTenants, state.byTenant)
     // Mark the nudge section as shadow so it's clear the count is being
     // withheld from the compact HUD during calibration.
     el.nudgeHeading.classList.toggle('shadow', state.nudgeMode === 'shadow')
   }
-  const [events, nudges, catch_, receipts]: [RecentEvent[], Nudge[], CatchStats, ReceiptRecord[]] =
-    await Promise.all([
-      window.fuel.recentEvents(),
-      window.fuel.recentNudges(),
-      window.fuel.catchStats(),
-      window.fuel.recentReceipts(),
-    ])
+  const [events, nudges, catch_, receipts, evictions]: [
+    RecentEvent[],
+    Nudge[],
+    CatchStats,
+    ReceiptRecord[],
+    EvictionEvent[],
+  ] = await Promise.all([
+    window.fuel.recentEvents(),
+    window.fuel.recentNudges(),
+    window.fuel.catchStats(),
+    window.fuel.recentReceipts(),
+    window.fuel.recentEvictions(),
+  ])
   renderPanelTasks(el.panelTasks, events)
+  renderPanelEvictions(el.panelEvictions, evictions)
   renderPanelCatch(el.panelCatch, catch_)
   renderPanelReceipts(el.panelReceipts, receipts)
   renderPanelNudges(el.panelNudges, nudges)

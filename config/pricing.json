@@ -2,6 +2,11 @@
   "_comment": "Claude API rates in USD per million tokens. Used only to estimate what locally-offloaded tokens would have cost had they gone to Claude. Copy this file to %LOCALAPPDATA%/fuel/pricing.json to override without a release.",
   "_source": "Anthropic model pricing, verified 2026-07-22",
   "default": "claude-opus-4-8",
+  "_tenants": "Counterfactual model per tenant id (see tenants.json): what these tokens would have cost had they gone to Claude. WEYLD's DJ really was billed to claude-sonnet-5 on 2026-08-13, so that is its honest baseline. null = no Claude counterfactual (embeddings), counted at $0. Tenants not listed use `default`.",
+  "tenants": {
+    "weyld-dj": "claude-sonnet-5",
+    "weyld-embed": null
+  },
   "models": {
     "claude-opus-4-8": { "inputPerMTok": 5.0, "outputPerMTok": 25.0 },
     "claude-opus-4-7": { "inputPerMTok": 5.0, "outputPerMTok": 25.0 },

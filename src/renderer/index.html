@@ -26,16 +26,25 @@
         <div id="tps">— tok/s</div>
       </div>
 
+      <div id="vram" title="VRAM budget — every resident model, by tenant">
+        <div id="vram-bar"></div>
+        <div id="vram-legend"></div>
+      </div>
+
       <footer>
         <span id="hw">⬡ —</span>
         <span id="unburned"></span>
-        <span id="ctx"></span>
+        <span id="evictions"></span>
       </footer>
 
       <section id="panel" aria-hidden="true">
         <div class="rows" id="panel-rows"></div>
+        <div class="sub">preserved · by tenant</div>
+        <div class="tasks" id="panel-tenants"></div>
         <div class="sub">recent</div>
         <div class="tasks" id="panel-tasks"></div>
+        <div class="sub">contention</div>
+        <div class="tasks" id="panel-evictions"></div>
         <div class="sub">toll booth</div>
         <div class="catch" id="panel-catch"></div>
         <div class="tasks" id="panel-receipts"></div>

@@ -78,9 +78,12 @@ export interface OllamaLogEvents {
 
 /**
  * Tails Ollama's server.log. This is the only vantage point that sees every
- * local inference regardless of which client made it — but every client
- * appears as 127.0.0.1, so it proves *that* work happened, never *who* asked.
- * Attribution requires the Phase C collector.
+ * inference the local Ollama serves, regardless of which client made it —
+ * including LAN callers once Ollama is bound to 0.0.0.0 (WEYLD's Jetson).
+ * The GIN line carries the caller IP, which is kept on the event so main can
+ * attribute it to a tenant; it does NOT carry the model name, so that is
+ * inferred upstream. Shim (Phase C) events remain the richer, authoritative
+ * record for the calls fuel itself made.
  */
 export class OllamaLogTailer extends EventEmitter<OllamaLogEvents> {
   private offset = 0
@@ -233,13 +236,16 @@ export class OllamaLogTailer extends EventEmitter<OllamaLogEvents> {
     const totalNs = totalMs * 1e6
     const loadNs = this.pendingLoadNs
     const ended = Date.now()
+    const clientIp = (m[3] ?? '').trim() || null
 
     const event: OffloadEvent = {
       startedAt: ended - Math.round(totalMs),
       endedAt: ended,
       source: 'log',
-      // Every client is 127.0.0.1 here; Phase C supplies real attribution.
+      // Tenant attribution and model inference happen in main, which owns the
+      // registry and the current /api/ps view. This layer just keeps the facts.
       client: null,
+      clientIp,
       sessionId: null,
       model: 'unknown',
       status: status >= 200 && status < 300 ? 'ok' : 'error',

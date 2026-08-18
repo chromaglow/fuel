@@ -40,8 +40,9 @@ Run from the repo root (`C:\Users\ezras\OneDrive\Documents\work\GitHub\fuel`).
 | `node integrations/install.mjs status` | Check Claude wiring (read-only) |
 | `node integrations/valve.mjs status` | Check valve relocation (read-only) |
 | `npx electron . --unhook` | **Emergency:** undo the valve relocation, then exit |
-| `ollama ps` | Is the model resident in VRAM right now? |
-| `ollama run qwen2.5-coder:14b` | Manually load / chat with the model |
+| `ollama ps` | Who is resident in VRAM right now (both tenants can be) — the HUD's VRAM bar is the same view |
+| `ollama run qwen2.5-coder:7b` | Manually load / chat with the coder model |
+| `python scripts/backfill-client-ip.py --days N [--apply]` | Re-attribute log events to tenants from Ollama's logs (one-time after the 2026-08-18 change) |
 
 ### Keyboard shortcuts
 
@@ -117,8 +118,13 @@ file) · `has-template` → lean **local**. `not-cheaply-verifiable` · `securit
 The toll booth *advises*; it doesn't move work by itself. In **Guard** mode, when you
 (or Claude Desktop) are about to write clearly-mechanical code, the PreToolUse hook
 surfaces: *"fuel: this looks like local work — route it to local_coding_task."* Claude
-then calls the local model (`local_coding_task`, backed by `qwen2.5-coder:14b`), the
+then calls the local model (`local_coding_task`, backed by `qwen2.5-coder:7b`), the
 result streams back, and the offload registers on the gauge.
+
+**Enforce** mode goes one step further: a clearly-local write is *denied* until a
+delegation has completed (writes then pass for 10 minutes so the delegated result and its
+siblings can land). Note the booth also intercepts prose and doc edits it judges
+mechanical — a trivial delegation opens the window.
 
 Delegation itself is done by Claude choosing to call `local_coding_task` — the toll
 booth makes that choice loud and timely instead of silently missed.
@@ -127,11 +133,30 @@ booth makes that choice loud and timely instead of silently missed.
 
 ## Troubleshooting
 
-### "No model loaded" / the gauge is idle
-**Normal when nothing has used the model recently.** Ollama evicts it after ~5 min idle
-(default `keep_alive`). It reloads on the next offload, or warm it manually:
-`ollama run qwen2.5-coder:14b` (or enable the **Valve** to pin `keep_alive`). Confirm
-with `ollama ps`.
+### "no model loaded" / the gauge is idle
+**Normal when nothing has used a model recently.** Keep-alive is `OLLAMA_KEEP_ALIVE=1h`
+server-side (the shim asks for 30 m for its own calls); a model unloads after that idle
+period and reloads on the next request. Warm the coder manually with
+`ollama run qwen2.5-coder:7b`. Confirm with `ollama ps` or the HUD's VRAM bar.
+
+### The HUD says `evicted N ⚠` / a resident row says `NN% on CPU ⚠`
+Contention. Two residents did not fit and one was pushed out early, or a model loaded
+while VRAM was short and landed partly in system RAM (that is the "PC locks up"
+state). Check `ollama ps` and `nvidia-smi`. Usual causes: a Claude session still on the
+old 14b shim (restart it), or orphaned `llama-server.exe` runners after an Ollama
+restart (kill any whose parent isn't the live `ollama.exe`, then `ollama stop <model>`
+so it reloads clean). The panel's **contention** section names the victim and the
+newcomer.
+
+### A resident row says `ka 5m ⚠`
+That caller isn't getting the server-side keep-alive. Check Ollama's `server.log` for
+`OLLAMA_KEEP_ALIVE:1h0m0s` at startup — if it says `5m0s`, Ollama was launched from a
+shell that didn't have the variable; relaunch it from the Start menu.
+
+### The dollar figure went *down*
+Since 2026-08-18 each tenant is priced at its own counterfactual model (WEYLD DJ at
+Sonnet rates, your offloads at the default). Hover the panel's **preserved · by tenant**
+rows to see the rate. Lower and honest beats higher and blended.
 
 ### The gauge stays at ~zero / nothing is being offloaded
 Offloading only happens when Claude *delegates* mechanical work. Check, in order:

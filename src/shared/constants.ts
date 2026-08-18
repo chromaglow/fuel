@@ -48,14 +48,15 @@ export const DEFAULT_NUM_CTX = 16384
 export const RECONCILE_WINDOW_MS = 6000
 
 export const WINDOW_WIDTH = 320
-/** Compact: header + 240px gauge + footer. */
-export const WINDOW_HEIGHT = 326
-/** Hover-expanded, with the dense telemetry panel + nudge list revealed. */
-export const WINDOW_HEIGHT_EXPANDED = 664
+/** Compact: header + 240px gauge + VRAM budget bar + footer. */
+export const WINDOW_HEIGHT = 352
+/** Hover-expanded, with the dense telemetry panel, contention log + nudge list. */
+export const WINDOW_HEIGHT_EXPANDED = 800
 
 /**
- * Daily budget-ring target in USD. The ring fills toward this; anything past
- * it spills into the overflow ring rather than pinning. User-overridable.
+ * Daily budget-ring target in USD. One lap of the ring = this much; past it
+ * the ring empties and starts the next lap in the next colour (see
+ * renderer/theme.ts LAP_COLORS) rather than pinning. User-overridable.
  */
 export const DEFAULT_DAILY_GOAL_USD = 2.0
 
@@ -101,8 +102,14 @@ export const PROXY_FAIL_THRESHOLD = 3
  */
 export const PROXY_KEEP_ALIVE = '30m'
 
-/** Model the valve pre-warms on request. */
-export const DEFAULT_MODEL = 'qwen2.5-coder:14b'
+/**
+ * Model the valve pre-warms on request. 7b, not 14b: the 14b (~11 GB) cannot
+ * share the 16 GB 4080 SUPER with WEYLD's resident DJ model (llama3.1:8b), so
+ * the two evicted each other on every call — measured 36–51 s reloads and
+ * desktop freezes on 2026-08-18. 7b (~5 GB) + DJ co-reside. Keep in sync with
+ * integrations/ollama_mcp.py MODEL.
+ */
+export const DEFAULT_MODEL = 'qwen2.5-coder:7b'
 
 /** Hard cap on a buffered generation request body before we give up rewriting. */
 export const PROXY_MAX_BODY_BYTES = 64 * 1024 * 1024

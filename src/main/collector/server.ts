@@ -39,6 +39,8 @@ function toEvent(b: IngestBody): OffloadEvent | null {
     endedAt: n(b.ended_at) ?? now,
     source: 'mcp',
     client,
+    // The shim runs on this machine by construction; it never sees the socket.
+    clientIp: null,
     sessionId: b.session_id != null ? String(b.session_id) : null,
     model: b.model ? String(b.model) : 'unknown',
     status: b.status === 'error' ? 'error' : 'ok',

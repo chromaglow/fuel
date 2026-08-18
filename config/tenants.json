@@ -1,0 +1,14 @@
+{
+  "_comment": "Who owns what on the shared GPU. Requests are attributed by caller IP (as Ollama logs it); resident models by name. Override per machine with %LOCALAPPDATA%/fuel/tenants.json (same shape; merged over these defaults).",
+  "byIp": {
+    "127.0.0.1": { "id": "local", "label": "this PC" },
+    "::1": { "id": "local", "label": "this PC" },
+    "192.168.4.144": { "id": "weyld-dj", "label": "WEYLD DJ", "model": "llama3.1:8b" }
+  },
+  "byModel": {
+    "qwen2.5-coder:7b": { "id": "coder", "label": "coder" },
+    "qwen2.5-coder:14b": { "id": "coder", "label": "coder" },
+    "llama3.1:8b": { "id": "weyld-dj", "label": "WEYLD DJ" },
+    "nomic-embed-text": { "id": "weyld-embed", "label": "WEYLD embed" }
+  }
+}

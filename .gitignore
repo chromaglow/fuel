@@ -47,3 +47,6 @@ logs/
 # Backups written by the integration installer
 *.backup
 *.bak
+
+# Python bytecode from the shim
+__pycache__/

@@ -1,5 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { CatchStats, HudState, Nudge, RecentEvent, ReceiptRecord } from '../shared/types.js'
+import type {
+  CatchStats,
+  EvictionEvent,
+  HudState,
+  Nudge,
+  RecentEvent,
+  ReceiptRecord,
+} from '../shared/types.js'
 
 /** The entire surface the renderer is allowed to touch. */
 const api = {
@@ -30,6 +37,9 @@ const api = {
   },
   recentReceipts(): Promise<ReceiptRecord[]> {
     return ipcRenderer.invoke('fuel:recent-receipts')
+  },
+  recentEvictions(): Promise<EvictionEvent[]> {
+    return ipcRenderer.invoke('fuel:recent-evictions')
   },
   models(): Promise<string[]> {
     return ipcRenderer.invoke('fuel:models')

@@ -10,7 +10,9 @@ Last updated: 2026-07-23 (Toll Booth built — M1–M6 of the router; **awaiting
 
 ## What fuel is, in one breath
 
-A frameless, translucent, always-on-top Windows HUD that shows — in real time — the work Claude offloads to a local RTX 4080 SUPER running `qwen2.5-coder:14b` via Ollama. Part instrument, part feedback loop: **the gauge exists to be filled**, because across 104 Claude Code sessions the local model had *never actually been used* before this project.
+A frameless, translucent, always-on-top Windows HUD that shows — in real time — what the local RTX 4080 SUPER is doing for whom. It began as a meter for the work Claude offloads to a local coder model via Ollama (**the gauge exists to be filled** — across 104 Claude Code sessions the local model had never been used before this project). Since 2026-08-18 the card is shared with WEYLD radio's DJ, and fuel is a **multi-tenant GPU instrument**: who is resident, whether they fit, who evicted whom, what keep-alive each caller really gets, and what each tenant's tokens would have cost on Claude.
+
+> **Resuming on 2026-08-19+? Read in this order:** this section → *Multi-tenant GPU model (layer 1)* → *Keep-alive policy (layer 2)* → *Per-tenant economics (layer 3)* below, then the 2026-08-18 entry in CHANGELOG.md for the narrative and every gotcha. Then check the M4 soak numbers listed at the end of that CHANGELOG entry.
 
 ---
 
@@ -18,6 +20,7 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 
 | Milestone | State | What it delivered |
 |---|---|---|
+| **Multi-tenant (L1–L3, 2026-08-18)** | ✅ done, live | tenants registry; `residents[]` + VRAM budget bar; eviction detector; CPU-split + keep-alive alarms; `OLLAMA_KEEP_ALIVE=1h`; per-tenant $ at counterfactual rates; lapping ring. **82 tests.** |
 | **M1 — Sensor** | ✅ done | 1 Hz GPU + model-residency telemetry, `server.log` tailer, SQLite persistence, live HUD |
 | **M2 — HUD** | ✅ done | Canvas gauge (ring + arc + sparkline), hover-expand panel, click-through, tray, six states, idle CPU 1.5% |
 | **M3 — Cockpit** | ✅ done | Instrumented MCP shim (streaming + `num_ctx`), collector, reconciler dedup, installer, first tests |
@@ -137,8 +140,109 @@ Read these before touching the relevant area — each cost real time to find.
 - **Build order A → C → B** (sensor → cockpit → valve). The valve (proxy) is load-bearing and risky, so it comes last, once the safe layers are trusted.
 - **Budget shown as `≈ $X` at Opus 4.8 rates, always with the `≈`.** On a subscription no dollars are literally saved — what's preserved is rate-limit headroom. The dollar figure is the legible proxy; it must never claim a refund. Rates live in `config/pricing.json` (overridable).
 - **Telemetry is fire-and-forget with a spool fallback.** If fuel is down, the shim's 250 ms POST fails, the record spools to disk, and the coding task returns normally. Instrumentation must never break the tool.
+- **`qwen2.5-coder:7b`, not 14b (2026-08-18).** The 4080 SUPER's 16 GB is shared with WEYLD radio's always-resident DJ model (`llama3.1:8b`, 5.9 GB @ numCtx 8192, called from the Jetson ~1,500×/day). 14b (11 GB) + DJ did not fit, so each delegation and each DJ pick evicted the other — fuel's own DB showed 40–96 cold starts/day and 36–51 s coder loads, and the worst swap hours matched Windows shell-hang events (the "PC locks up" complaint). 7b (5.6 GB) + DJ = 11.5 GB, both resident, coder loads in ~0.1 s warm. Budget rule: **DJ + coder must stay under ~12 GB**; if either grows, shrink the other. `MODEL` in `integrations/ollama_mcp.py` and `DEFAULT_MODEL` in `src/shared/constants.ts` must match. Override per-client with `FUEL_MODEL`.
 
 ---
+
+## Multi-tenant GPU model (layer 1, 2026-08-18)
+
+fuel was built for one model / one user / one lifecycle. That stopped being true
+on 2026-08-04 when Ollama was bound to the LAN for WEYLD's Jetson: the 4080 is
+now a **shared card with tenants**, and the failure that actually hurt (two
+models evicting each other) was unrepresentable — the HUD showed the same
+5-minute lifecycle before and after the fix. Layer 1 makes the truth visible:
+
+- **`config/tenants.json`** (override: `%LOCALAPPDATA%\fuel\tenants.json`, merged) —
+  `byIp` attributes requests (log tailer keeps the GIN caller IP; `192.168.4.144`
+  = WEYLD DJ, may declare its `model`), `byModel` attributes residents.
+  Unknown → shown as unknown, never merged. `src/main/tenants.ts`.
+- **`HudState.residents: ResidentModel[]`** replaces the singular `resident`
+  (`readResidents()` returns null=down, []=idle, else every `/api/ps` row, tenant-tagged).
+  `Sample.residents` JSON column replaces `model_resident/model_vram_bytes/evict_at`
+  (old columns retained, not written). `events.client_ip` added; log events get
+  `client` = tenant id and `model` inferred (declared → sole resident → 'unknown').
+- **`EvictionDetector`** (`src/main/sensors/evictions.ts`, tested) turns successive
+  `/api/ps` snapshots into `evictions` rows: a resident leaving >5 s before its own
+  `expires_at` is contention; a newcomer within 20 s gets the blame. Timeouts at
+  the deadline are NOT evictions (cheap 1.5 s reloads; a keep-alive question).
+  Only advances on a successful `/api/ps` read, so a transient timeout can't spray
+  false contention.
+- **UI**: header = tenants on the card; status = count + soonest keep-alive;
+  **VRAM budget bar** under the gauge (segments per tenant, "other" for driver/desktop,
+  free; amber when < 2 GB free); footer right = `evicted N` (green at 0); panel =
+  one row per resident + reloads vs evictions split + contention log; recent tasks
+  show who. Tenant colours are CSS vars `--t-<id>` in `style.css`.
+- **Ring laps** (same day, per Ezra): one ring; each full lap of the daily goal
+  empties and advances red → yellow → orange → green → blue (`theme.ts LAP_COLORS`),
+  previous lap tinting the track. The purple overflow ring is gone.
+- Measured on first run: coder 5.6 + DJ 5.9 resident, but nvidia-smi 14.1/16 GB
+  used — the desktop itself holds ~2.6 GB, so real headroom is ~2 GB, not 4.5.
+  The bar shows this; the arithmetic in STATUS.md did not.
+
+## Keep-alive policy at the Ollama layer (layer 2, 2026-08-18)
+
+**`OLLAMA_KEEP_ALIVE=1h`, user-level environment variable, Ollama restarted.**
+Every caller that sends no `keep_alive` — WEYLD's subwave does not — now inherits
+1 h instead of Ollama's 5-min default. The shim's explicit 30 m still wins for its
+own calls (client value > env > default). Rationale: the DJ was self-reloading
+40–80×/day (cheap 1.5 s each, but pointless), and fuel's Valve — the component
+designed to pin keep-alive "for all clients" — binds 127.0.0.1 only, so the LAN
+tenant bypassed it. Policy belongs on the server, not per-client. Ollama still
+LRU-evicts under genuine VRAM pressure, so a long keep-alive is not a pin.
+
+fuel **observes** the keep-alive actually in force rather than trusting config:
+a request moves a resident's `expires_at` forward, and the distance from "now"
+is the keep-alive for that caller (`observeKeepAlive` in `src/main/index.ts`,
+`ResidentModel.keepAliveSec`). The panel row shows `ka 1h`; `ka 5m ⚠` on a
+resident means the policy is not reaching that caller.
+
+Trap, hit on the first try: `SetEnvironmentVariable(...,'User')` writes the
+registry but not the *current* shell, and Ollama launched from that shell
+inherits the stale env — the server came up with `OLLAMA_KEEP_ALIVE:5m0s`.
+Ollama prints its effective env at startup; check `server.log` for
+`OLLAMA_KEEP_ALIVE:1h0m0s` rather than trusting the registry. Set
+`$env:OLLAMA_KEEP_ALIVE` in-process too before relaunching, or relaunch from
+the Start menu / next login.
+
+Revert: `[Environment]::SetEnvironmentVariable('OLLAMA_KEEP_ALIVE',$null,'User')`
+then restart Ollama.
+
+**Two more traps from the same afternoon, both now alarms in fuel:**
+
+- **Orphaned `llama-server.exe` runners.** `Stop-Process ollama` kills the server
+  but not its runner children; each keeps its VRAM. Two restarts left three
+  orphans holding ~9 GB, and the DJ's next load landed **18/33 layers on the GPU,
+  45% on the CPU** — the freeze mechanism, caused by the fix. Cleanup: kill every
+  `llama-server.exe` whose parent is not the live `ollama.exe`. fuel now reads
+  `/api/ps` `size` vs `size_vram` and shows a CPU-split resident as a hatched
+  segment, red bar edge, `<tenant> on CPU ⚠` in the footer, and `NN% on CPU ⚠`
+  in the panel row (`ResidentModel.sizeTotal`). Restart Ollama from its Start
+  menu entry rather than killing the process when you can.
+- **A Claude session keeps the shim it started with.** Sessions opened before the
+  7b switch still delegate to the 14b; one such delegation evicted the DJ
+  (`evictions` row: `llama3.1:8b 3569 s early ← qwen2.5-coder:14b`) — the first
+  real contention event the detector logged. Restart old sessions after changing
+  `MODEL`.
+
+## Per-tenant economics (layer 3, 2026-08-18)
+
+Each tenant's tokens are priced at **its own counterfactual Claude model**
+(`config/pricing.json` → `tenants`): WEYLD DJ → `claude-sonnet-5` (what it was
+really billed to on 08-13), your offloads and anything unattributed → `default`
+(Opus), `weyld-embed` → `null` (no Claude equivalent, $0). `usdToday` is the sum
+of `HudState.byTenant`, not one blended rate; the ring laps that sum. The panel's
+"preserved · by tenant" section shows tasks, in/out tokens and ≈$ per tenant
+with the rate model on hover, and an explicit `unattributed` row when there is
+one. **Effect on the first day: the headline dropped from ≈$7.84 to ≈$4.85** —
+the DJ had been priced at Opus rates. Lower, and honest.
+
+`scripts/backfill-client-ip.py` re-attributes older log events by matching
+`ended_at` against GIN lines still on disk (unambiguous single-IP matches only,
+±3 s). Run once after the attribution change: 4,967 events matched (4,950 DJ),
+8,787 whose logs had rotated away stay NULL and show as unattributed.
+
+Shim clients (`claude-code`, `claude-desktop`) fold into the `local` tenant for
+the economics rows; the shim's own client name is still kept on the event.
 
 ## Known issues / gaps
 
@@ -175,6 +279,27 @@ config/pricing.json          Claude API rates for the budget estimate
 ---
 
 ## Immediate next steps to resume
+
+**As of 2026-08-18 evening:** everything below the line is older context. The live
+work is the multi-tenant instrument (layers 1–3 above), all built, tested and running.
+Tomorrow's job is to **read the soak, not write code**:
+
+1. **M4 soak check.** Hover the HUD: footer should read `evicted 0 ✓`; the panel's
+   `reloads` should be near zero (the DJ no longer self-reloads); each resident row
+   should show `ka 1h` (or `ka 30m` for the coder); the **contention** section should be
+   empty. `nvidia-smi` should show one `llama-server.exe` per resident, all children of
+   the live `ollama.exe`. Windows Event Viewer → Application 1002 should show no new
+   shell hangs.
+2. **Restart any Claude Code / Desktop session opened before 2026-08-18 ~13:20** — they
+   still hold the 14b shim and will evict the DJ on every delegation (this is the one
+   known way to break the budget).
+3. If a freeze happens *with* `evicted 0` and no CPU-split — the theory was wrong; capture
+   `Get-Process` and `ollama ps` during it and look elsewhere. Reverts are one-liners
+   (README budget section, STATUS.md on the WEYLD side).
+4. Housekeeping candidates, in order of value: outcome-stamping (`receipts.outcome`,
+   the "N offloaded" gauge count); a weekly view of `evictions`/`byTenant`; packaging.
+
+Older resume notes follow.
 
 The five milestones **and** the Toll Booth are built. What's left is *activation*, not new code.
 

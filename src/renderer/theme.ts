@@ -7,8 +7,29 @@ export const COLORS = {
   warn: '#fbbf24',
   bad: '#f87171',
   good: '#4ade80',
-  overflow: '#a78bfa',
 } as const
+
+/**
+ * The budget ring laps. Each full circuit of the daily goal resets the sweep
+ * and advances one step along this sequence, so the colour alone says how many
+ * times over the goal today has gone: red is the first lap, blue the fifth
+ * and beyond. Stored as [r,g,b] so glow and track tints can be derived.
+ */
+export const LAP_COLORS: ReadonlyArray<readonly [number, number, number]> = [
+  [248, 113, 113], // red
+  [251, 191, 36], //  yellow
+  [251, 146, 60], //  orange
+  [74, 222, 128], //  green
+  [34, 211, 238], //  blue
+]
+
+export function lapColor(lap: number): readonly [number, number, number] {
+  return LAP_COLORS[Math.min(Math.max(0, lap), LAP_COLORS.length - 1)]!
+}
+
+export function rgba(c: readonly [number, number, number], a: number): string {
+  return `rgba(${c[0]}, ${c[1]}, ${c[2]}, ${a})`
+}
 
 /** Canvas size in CSS pixels. The window reserves room for exactly this. */
 export const GAUGE_SIZE = 240

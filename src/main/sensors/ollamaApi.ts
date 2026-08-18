@@ -4,6 +4,7 @@ import { OLLAMA_BASE } from '@shared/constants'
 interface PsModel {
   name?: string
   model?: string
+  size?: number
   size_vram?: number
   context_length?: number
   expires_at?: string
@@ -25,24 +26,32 @@ async function getJson<T>(path: string, timeoutMs = 3000): Promise<T | null> {
 }
 
 /**
- * Currently-resident model, or null when nothing is loaded.
- * `expires_at` is Ollama's eviction deadline (default keep_alive is 5 min).
- * A null return also means "Ollama unreachable" — callers pair this with
- * `pingOllama` when they need to distinguish the two.
+ * Every model currently resident, from /api/ps — the GPU is shared, and two
+ * tenants can be loaded at once (that is the whole point of the VRAM budget).
+ * `expires_at` is each model's own keep-alive deadline.
+ *
+ * Returns `null` when Ollama is unreachable, `[]` when it is up but idle, so
+ * callers can tell "down" from "nothing loaded" without a second probe.
+ * Tenant is filled in by the caller (main knows the registry; this sensor
+ * only knows Ollama).
  */
-export async function readResident(): Promise<ResidentModel | null> {
+export async function readResidents(): Promise<
+  Omit<ResidentModel, 'tenant' | 'keepAliveSec'>[] | null
+> {
   const data = await getJson<{ models?: PsModel[] }>('/api/ps')
-  const m = data?.models?.[0]
-  if (!m) return null
+  if (data == null) return null
 
-  const expires = m.expires_at ? Date.parse(m.expires_at) : NaN
-
-  return {
-    name: m.name ?? m.model ?? 'unknown',
-    sizeVram: Number(m.size_vram ?? 0),
-    contextLength: m.context_length != null ? Number(m.context_length) : null,
-    expiresAt: Number.isFinite(expires) ? expires : null,
-  }
+  return (data.models ?? []).map((m) => {
+    const expires = m.expires_at ? Date.parse(m.expires_at) : NaN
+    const sizeVram = Number(m.size_vram ?? 0)
+    return {
+      name: m.name ?? m.model ?? 'unknown',
+      sizeVram,
+      sizeTotal: Math.max(sizeVram, Number(m.size ?? 0)),
+      contextLength: m.context_length != null ? Number(m.context_length) : null,
+      expiresAt: Number.isFinite(expires) ? expires : null,
+    }
+  })
 }
 
 /** Installed models. Polled infrequently; used for the model picker later. */

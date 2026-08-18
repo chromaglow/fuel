@@ -40,6 +40,11 @@ Every number here was measured on the target machine on 2026-07-22. These are no
 
 ### 2.2 Model
 
+> **Superseded 2026-08-18.** The coder is now `qwen2.5-coder:7b` and the card is shared
+> with WEYLD's DJ; the singular-model assumptions in this section (one resident, one
+> lifecycle, `resident: ResidentModel | null`) are replaced by the multi-tenant model in
+> HANDOFF.md (layers 1–3). The 14b figures below remain the original measured baseline.
+
 | Property | Value |
 |---|---|
 | Model | `qwen2.5-coder:14b` |

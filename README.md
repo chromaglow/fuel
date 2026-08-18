@@ -27,33 +27,34 @@ Translucent, frameless, always-on-top. It sits over the desktop and shows local-
 
 ## Why
 
-The delegation path already exists — an MCP server exposing `local_coding_task`, backed by `qwen2.5-coder:14b` on the 4080. It has never been used. Across 104 Claude Code sessions: **zero real invocations.** Claude Desktop isn't even wired up to it.
+The delegation path already exists — an MCP server exposing `local_coding_task`, backed by a local coder model on the 4080. When fuel was started it had never been used: across 104 Claude Code sessions, **zero real invocations.** So `fuel` is equal parts instrument and feedback loop. The gauge exists to be *filled*.
 
-So `fuel` is equal parts instrument and feedback loop. The gauge exists to be *filled*.
+**Since 2026-08-18 the card is shared.** WEYLD radio's DJ (`llama3.1:8b`, called from a Jetson on the LAN ~1,500×/day) lives on the same 16 GB as fuel's coder. fuel now models the GPU as what it is — a **multi-tenant** resource — and its job widened from "meter my offloads" to "show who is on the card, whether they fit, and who is paying for whom." See [HANDOFF.md](./HANDOFF.md) (layers 1–3) and the 2026-08-18 entry in [CHANGELOG.md](./CHANGELOG.md) for the story.
 
 ## Measured baseline
 
-Everything the HUD's scales are calibrated against, measured on the target machine:
+What the HUD's scales are calibrated against, measured on the target machine. The 14b row is the original (2026-07-22) baseline; the 7b is what runs now.
 
 | | |
 |---|---|
 | GPU | RTX 4080 SUPER · 16,376 MiB · 320 W |
-| Model | `qwen2.5-coder:14b` Q4_K_M · 14.8 B params |
-| VRAM resident | 9.47 GB (→ ~4.2 GB headroom) |
-| **Generation (warm)** | **~63 tok/s** |
-| Generation (cold run) | 40.1 tok/s |
-| **Cold start** | **33.4 s** |
-| Eviction | 5 min idle (Ollama default) |
-| Context | **4,096** ⚠️ — the model supports 32,768 |
+| Coder model (now) | `qwen2.5-coder:7b` · **5.6 GB** resident @ 16k ctx · warm load ~0.1–2 s |
+| Coder model (orig) | `qwen2.5-coder:14b` Q4_K_M · 9.5–11 GB resident · **~63 tok/s** warm · 33 s cold start |
+| Co-tenant | WEYLD DJ `llama3.1:8b` · 5.9 GB @ 8k ctx · ~110 tok/s |
+| Desktop itself | ~2.6 GB (browsers, DWM) — real free space with both models is **~2 GB** |
+| Keep-alive | `OLLAMA_KEEP_ALIVE=1h` server-side (Ollama default was 5 min) |
+| Context (shim) | 16,384 — the original 4,096 silent default was a real bug; the shim now sets `num_ctx` |
 
-That last row is a real bug, not a display detail: the MCP shim never sets `num_ctx`, so every delegation silently runs at 4K context. `fuel` fixes it — and until it does, the HUD shows the truncation warning.
+**The budget rule:** DJ + coder must stay under ~12 GB. The 14b + DJ did not fit (18 GB), and the two evicted each other on every call — 40–96 reloads a day and the "PC locks up for minutes" complaint. The VRAM bar on the HUD shows this live; `evicted N` in the footer counts it.
 
 ## Documentation
 
 - **[USAGE.md](./USAGE.md)** — how to use it day to day: every command, the tray controls, the Toll Booth, and troubleshooting.
 - **[HANDOFF.md](./HANDOFF.md)** — state of play + how to resume/activate, plus every hard-won trap.
 - **[CHANGELOG.md](./CHANGELOG.md)** — dated build & decision log.
-- **[SPEC.md](./SPEC.md)** — full design.
+- **[SPEC.md](./SPEC.md)** — original design (single-model era; §2.2 baseline superseded by the multi-tenant sections in HANDOFF).
+- **[FIXES.md](./FIXES.md)** — the Claude Desktop offload investigation and its resolution (policy lives in the shim).
+- **`config/tenants.json`** / **`config/pricing.json`** — who owns what on the GPU, and what each tenant's tokens are priced against.
 
 ## Running it
 
@@ -92,7 +93,9 @@ Electron + TypeScript + Node 24's built-in `node:sqlite` (zero native deps — n
 
 ## Status
 
-**Toll Booth complete & activated (2026-07-23)** — the real-time offload router, and the answer to the project's core problem (the gauge never filled because *nothing routed work to the GPU*).
+**Multi-tenant instrument (2026-08-18)** — fuel now models the 4080 as a shared card. Layer 1 *truth*: tenants (`config/tenants.json`), every resident from `/api/ps` tenant-tagged, a VRAM budget bar, an eviction detector that separates contention from harmless timeouts, a CPU-split alarm, attributed log events (the caller IP is kept). Layer 2 *policy*: keep-alive set at the Ollama layer and *observed* per resident. Layer 3 *economics*: each tenant priced at its own counterfactual Claude model; the headline is the honest sum, itemised in the panel. Plus a lapping budget ring (red → yellow → orange → green → blue, one lap per daily goal). 82 tests. Story and gotchas: [CHANGELOG 2026-08-18](./CHANGELOG.md); resume from [HANDOFF.md](./HANDOFF.md).
+
+**Toll Booth complete & activated (2026-07-23), enforce mode added 2026-07-24** — the real-time offload router, and the answer to the project's core problem (the gauge never filled because *nothing routed work to the GPU*).
 
 - On every pending Write/Edit, six pure "designators" (verifiability ★, spec-completeness, pattern-analog, blast-radius, reasoning-depth, context-locality) feed a router that decides **local / cloud / gray**. **Cost is never the criterion — verifiability is the master gate:** *"if the cheap model gets it wrong, do I find out immediately and for free?"* That single rule keeps security, concurrency, and architecture on Claude while boilerplate, config, tests, and scaffolds go local.
 - A `PreToolUse` hook (`integrations/precheck.cjs`) posts each pending action to a new `/decide` endpoint, which records an auditable **receipt** and — in **Guard** mode — advises redirecting clearly-local work to `local_coding_task` *before* Claude types it. **Observe** mode records only (safe default); **Off** disables. Tunable sensitivity (Careful/Normal/Eager) from the tray.

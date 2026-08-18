@@ -13,6 +13,15 @@
   --muted-bright: #94a3b8;
   --panel: rgba(7, 11, 17, 0.74);
   --edge: rgba(34, 211, 238, 0.16);
+
+  /* Tenant colours. The GPU is shared; each resident model is painted in its
+     owner's hue so "who is on the card" is readable at a glance. */
+  --t-coder: #22d3ee;
+  --t-weyld-dj: #c084fc;
+  --t-weyld-embed: #a78bfa;
+  --t-local: #34d399;
+  --t-unknown: #94a3b8;
+  --t-other: rgba(148, 163, 184, 0.28);
 }
 
 * {
@@ -161,6 +170,71 @@ header {
   transition: color 300ms ease;
 }
 
+/* ---------- VRAM budget bar ---------- */
+
+#vram {
+  flex: 0 0 auto;
+  margin: 0 0 6px;
+}
+
+#vram-bar {
+  display: flex;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(148, 163, 184, 0.1);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+#vram-bar .seg {
+  height: 100%;
+  min-width: 0;
+  transition: width 500ms ease;
+}
+#vram-bar .seg.coder { background: var(--t-coder); }
+#vram-bar .seg.weyld-dj { background: var(--t-weyld-dj); }
+#vram-bar .seg.weyld-embed { background: var(--t-weyld-embed); }
+#vram-bar .seg.local { background: var(--t-local); }
+#vram-bar .seg.unknown { background: var(--t-unknown); }
+#vram-bar .seg.other { background: var(--t-other); }
+/* Over budget: the bar itself turns amber so contention is visible before
+   an eviction has even been counted. */
+#vram-bar.tight { border-color: rgba(251, 191, 36, 0.5); }
+/* A resident partly in system RAM: hatched, and the bar edge goes red — this
+   is the machine-freezing state, not a budgeting nicety. */
+#vram-bar .seg.cpu-split {
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.35) 0 3px,
+    transparent 3px 6px
+  );
+}
+#vram-bar.split { border-color: rgba(248, 113, 113, 0.7); }
+#vram-legend .lg.cpu-split { color: var(--bad); }
+
+#vram-legend {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 8.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+#vram-legend .lg {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+#vram-legend .lg.coder { color: var(--t-coder); }
+#vram-legend .lg.weyld-dj { color: var(--t-weyld-dj); }
+#vram-legend .lg.weyld-embed { color: var(--t-weyld-embed); }
+#vram-legend .lg.local { color: var(--t-local); }
+#vram-legend .lg.unknown { color: var(--t-unknown); }
+#vram-legend .lg.free { color: var(--muted); }
+#vram-legend .lg.free.tight { color: var(--warn); }
+
 /* ---------- footer ---------- */
 
 footer {
@@ -173,6 +247,18 @@ footer {
   border-top: 1px solid rgba(148, 163, 184, 0.09);
   padding-top: 8px;
   flex: 0 0 auto;
+  /* One row, always: the hardware readout yields (ellipsis) before anything
+     is allowed to wrap. */
+  white-space: nowrap;
+}
+footer > span {
+  flex: 0 0 auto;
+}
+footer > #hw {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Only pin the footer to the bottom in compact mode; when expanded the panel
@@ -181,11 +267,52 @@ body:not(.expanded) footer {
   margin-top: auto;
 }
 
-#ctx.warn {
+/* Evictions today: zero is the goal and reads calm; anything else is the
+   contention alarm this whole bar exists to surface. */
+#evictions.ok {
+  color: var(--good);
+}
+#evictions.warn {
   color: var(--warn);
 }
-#ctx.ok {
-  color: var(--good);
+
+/* Per-tenant colouring in the panel's resident rows and eviction log. */
+#panel .tenant.coder { color: var(--t-coder); }
+#panel .tenant.weyld-dj { color: var(--t-weyld-dj); }
+#panel .tenant.weyld-embed { color: var(--t-weyld-embed); }
+#panel .tenant.local { color: var(--t-local); }
+#panel .tenant.unknown { color: var(--t-unknown); }
+#panel .tenant-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+}
+#panel .tenant-row .mid {
+  flex: 1 1 auto;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#panel .tenant-row .usd {
+  color: var(--accent);
+}
+#panel .evict {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--warn);
+  font-variant-numeric: tabular-nums;
+}
+#panel .evict .t {
+  color: var(--muted);
+}
+#panel .evict .by {
+  color: var(--muted-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Unburned-fuel counter: a soft amber, never alarming. Hidden unless live
