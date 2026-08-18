@@ -43,6 +43,18 @@ test('gateAction only advises clearly-local work, and only in guard mode', () =>
   assert.equal(gateAction('gray', 'guard'), 'allow')
 })
 
+test('enforce mode denies local work unless within the delegation grace window', () => {
+  assert.equal(gateAction('local', 'enforce'), 'deny')
+  assert.equal(gateAction('local', 'enforce', true), 'allow')
+  assert.equal(gateAction('cloud', 'enforce'), 'allow')
+  assert.equal(gateAction('gray', 'enforce'), 'allow')
+})
+
+test('evaluate threads inGrace through to the enforce verdict', () => {
+  assert.equal(evaluate(reformat, { mode: 'enforce' }).action, 'deny')
+  assert.equal(evaluate(reformat, { mode: 'enforce', inGrace: true }).action, 'allow')
+})
+
 test('observe mode records the decision but never interferes', () => {
   const recorded: RouteReceipt[] = []
   const v = evaluate(reformat, { mode: 'observe', record: (r) => recorded.push(r) })

@@ -27,6 +27,7 @@ export interface TrayHandlers {
 const TOLL_MODE_LABEL: Record<GateMode, string> = {
   observe: 'Observe (record only)',
   guard: 'Guard (advise redirects)',
+  enforce: 'Enforce (require local)',
   off: 'Off',
 }
 
@@ -99,7 +100,7 @@ export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
       {
         label: 'Toll booth',
         submenu: [
-          ...(['observe', 'guard', 'off'] as const).map((mode) => ({
+          ...(['observe', 'guard', 'enforce', 'off'] as const).map((mode) => ({
             label: TOLL_MODE_LABEL[mode],
             type: 'radio' as const,
             checked: h.tollMode() === mode,

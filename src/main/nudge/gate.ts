@@ -8,12 +8,15 @@ import { decide, presetFor, type Aggressiveness, type Route, type RouteReceipt }
  * NudgeClassifier's emit), so it stays deterministic and testable.
  *
  * Modes: 'observe' records the decision and never interferes (safe default);
- * 'guard' additionally advises redirecting clearly-local work; 'off' does
- * nothing. Delegations and unwatched tools pass straight through, unrecorded.
+ * 'guard' additionally advises redirecting clearly-local work; 'enforce'
+ * DENIES clearly-local writes so delegation is required, with a grace window
+ * after a completed delegation so the delegated result can be written; 'off'
+ * does nothing. Delegations and unwatched tools pass straight through,
+ * unrecorded.
  */
 
-export type GateMode = 'observe' | 'guard' | 'off'
-export type GateAction = 'allow' | 'advise'
+export type GateMode = 'observe' | 'guard' | 'enforce' | 'off'
+export type GateAction = 'allow' | 'advise' | 'deny'
 
 /** What the PreToolUse hook POSTs to /decide (a not-yet-executed tool). */
 export interface DecidePayload {
@@ -56,8 +59,11 @@ export function toGateEvent(p: DecidePayload): HookEvent | null {
   }
 }
 
-export function gateAction(route: Route, mode: GateMode): GateAction {
-  return mode === 'guard' && route === 'local' ? 'advise' : 'allow'
+export function gateAction(route: Route, mode: GateMode, inGrace = false): GateAction {
+  if (route !== 'local') return 'allow'
+  if (mode === 'guard') return 'advise'
+  if (mode === 'enforce') return inGrace ? 'allow' : 'deny'
+  return 'allow'
 }
 
 export function advisoryText(reasons: string[]): string {
@@ -88,6 +94,7 @@ export function evaluate(
     mode?: GateMode
     ctx?: SignalContext
     record?: (r: RouteReceipt, event: HookEvent) => void
+    inGrace?: boolean
   } = {},
 ): GateVerdict {
   const mode = opts.mode ?? 'observe'
@@ -97,5 +104,10 @@ export function evaluate(
   }
   const receipt = decide(extractSignals(event, opts.ctx), presetFor(opts.level ?? 'normal'))
   opts.record?.(receipt, event)
-  return { route: receipt.route, action: gateAction(receipt.route, mode), reasons: receipt.reasons, receipt }
+  return {
+    route: receipt.route,
+    action: gateAction(receipt.route, mode, opts.inGrace ?? false),
+    reasons: receipt.reasons,
+    receipt,
+  }
 }

@@ -65,10 +65,22 @@ process.stdin.on('end', () => {
         } catch {
           process.exit(0)
         }
-        if (v && v.action === 'advise') {
-          const why = Array.isArray(v.reasons)
+        const why =
+          v && Array.isArray(v.reasons)
             ? v.reasons.filter((r) => r !== 'ambiguous-default-cloud').slice(0, 3).join(', ')
             : ''
+        if (v && v.action === 'deny') {
+          const reason = `fuel Toll Booth (enforce): this is local work${why ? ` (${why})` : ''} — delegate it to local_coding_task first, then retry the write (writes pass for 10 minutes after a completed delegation).`
+          process.stdout.write(
+            JSON.stringify({
+              hookSpecificOutput: {
+                hookEventName: 'PreToolUse',
+                permissionDecision: 'deny',
+                permissionDecisionReason: reason,
+              },
+            }),
+          )
+        } else if (v && v.action === 'advise') {
           const reason = `fuel: this looks like local work${why ? ` (${why})` : ''} — route it to local_coding_task, or split off the mechanical part.`
           process.stdout.write(
             JSON.stringify({
