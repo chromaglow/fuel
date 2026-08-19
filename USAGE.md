@@ -133,6 +133,14 @@ booth makes that choice loud and timely instead of silently missed.
 
 ## Troubleshooting
 
+### fuel vanishes / quits with no error
+It was almost certainly started from inside a Claude session (Claude Code tool shell,
+or a Claude Desktop chat). Those processes live in a Windows job owned by Claude
+Desktop and are killed when Desktop restarts (auto-updates!) or the session closes.
+Relaunch it from outside Claude — double-click the Startup shortcut, or from a plain
+terminal: `explorer.exe "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\fuel.lnk"`.
+Check with Task Manager → Details → electron.exe → parent should be `explorer.exe`.
+
 ### "no model loaded" / the gauge is idle
 **Normal when nothing has used a model recently.** Keep-alive is `OLLAMA_KEEP_ALIVE=1h`
 server-side (the shim asks for 30 m for its own calls); a model unloads after that idle

@@ -207,6 +207,19 @@ the Start menu / next login.
 Revert: `[Environment]::SetEnvironmentVariable('OLLAMA_KEEP_ALIVE',$null,'User')`
 then restart Ollama.
 
+**The 2026-08-19 morning trap — "fuel keeps disappearing":** fuel died at 08:19:21
+and again at 08:28:51 with no crash, no dump, no error. Cause: every fuel restart on
+08-18 was done from a Claude Code tool shell running inside Claude Desktop, and
+**Windows puts that whole tree in a job object owned by Claude Desktop** (verified:
+`QueryInformationJobObject` from the tool shell lists 11 `claude.exe` + the tool
+processes). When Desktop auto-updated (08:19:22, `Claude_1.32885`) and when the
+previous Claude Code session closed, the job's members were terminated — fuel
+included. **Never launch fuel (or Ollama) from a Claude tool shell.** Launch it the
+way the Startup folder does: `explorer.exe "%APPDATA%\Microsoft\Windows\Start
+Menu\Programs\Startup\fuel.lnk"` — the parent is Explorer and the process survives
+Claude. Same rule for `ollama app.exe`: if it was started from a Claude shell, the
+DJ loses its brain the next time Desktop restarts.
+
 **Two more traps from the same afternoon, both now alarms in fuel:**
 
 - **Orphaned `llama-server.exe` runners.** `Stop-Process ollama` kills the server
