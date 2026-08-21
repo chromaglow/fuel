@@ -214,11 +214,17 @@ and again at 08:28:51 with no crash, no dump, no error. Cause: every fuel restar
 `QueryInformationJobObject` from the tool shell lists 11 `claude.exe` + the tool
 processes). When Desktop auto-updated (08:19:22, `Claude_1.32885`) and when the
 previous Claude Code session closed, the job's members were terminated — fuel
-included. **Never launch fuel (or Ollama) from a Claude tool shell.** Launch it the
-way the Startup folder does: `explorer.exe "%APPDATA%\Microsoft\Windows\Start
-Menu\Programs\Startup\fuel.lnk"` — the parent is Explorer and the process survives
-Claude. Same rule for `ollama app.exe`: if it was started from a Claude shell, the
-DJ loses its brain the next time Desktop restarts.
+included. **Never launch fuel (or Ollama) from a Claude tool shell.** Same rule for
+`ollama app.exe`: if it was started from a Claude shell, the DJ loses its brain the
+next time Desktop restarts.
+
+**Update 2026-08-21 — even the Explorer relaunch died** (07:48, after ~2 days up), so
+the durable answer is the **Task Scheduler launcher**
+(`deploy/install-fuel-launcher.ps1`): task `fuel` = on-demand force relaunch, wired
+to a **Desktop\Fuel.lnk** shortcut; task `fuel autoheal` = at logon + every 15 min,
+starts fuel only if missing (verified: no-op on a healthy instance, revives a killed
+one). Tasks run outside any job object. `deploy/relaunch-fuel.cmd` is the shared
+action (`/auto` = heal mode).
 
 **Two more traps from the same afternoon, both now alarms in fuel:**
 

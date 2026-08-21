@@ -137,9 +137,13 @@ booth makes that choice loud and timely instead of silently missed.
 It was almost certainly started from inside a Claude session (Claude Code tool shell,
 or a Claude Desktop chat). Those processes live in a Windows job owned by Claude
 Desktop and are killed when Desktop restarts (auto-updates!) or the session closes.
-Relaunch it from outside Claude — double-click the Startup shortcut, or from a plain
-terminal: `explorer.exe "%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\fuel.lnk"`.
-Check with Task Manager → Details → electron.exe → parent should be `explorer.exe`.
+
+**The fix (installed 2026-08-21): double-click `Fuel` on the desktop.** It fires the
+scheduled task `fuel`, which kills any half-dead instance and relaunches outside any
+job object — nothing Claude does can reach it. A second task, `fuel autoheal`, also
+revives fuel automatically at logon and every 15 minutes (it never touches a healthy
+instance). Reinstall both + the shortcut any time with
+`powershell -File deploy\install-fuel-launcher.ps1`.
 
 ### "no model loaded" / the gauge is idle
 **Normal when nothing has used a model recently.** Keep-alive is `OLLAMA_KEEP_ALIVE=1h`
