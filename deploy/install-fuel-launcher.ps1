@@ -16,8 +16,14 @@ $fuelDir = 'C:\dev\GitHub\fuel'
 $cmd = Join-Path $fuelDir 'deploy\relaunch-fuel.cmd'
 if (-not (Test-Path $cmd)) { throw "missing $cmd" }
 
+# Console apps launched by Task Scheduler flash a visible terminal window for a
+# fraction of a second - enough to steal foreground focus and knock Windows
+# voice typing out of its text field (diagnosed 2026-08-30). conhost --headless
+# gives the whole child tree a hidden pseudoconsole, so nothing ever appears.
+$conhost = Join-Path $env:SystemRoot 'System32\conhost.exe'
+
 # --- task: fuel (on-demand force relaunch) ---
-$action = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmd`""
+$action = New-ScheduledTaskAction -Execute $conhost -Argument "--headless cmd.exe /c `"$cmd`""
 $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
   -ExecutionTimeLimit (New-TimeSpan -Minutes 5) -MultipleInstances IgnoreNew
 try { Unregister-ScheduledTask -TaskName 'fuel' -Confirm:$false -ErrorAction Stop } catch {}
@@ -25,7 +31,7 @@ Register-ScheduledTask -TaskName 'fuel' -Action $action -Settings $settings `
   -Description 'Launch/relaunch the fuel HUD outside any app job object (survives Claude Desktop updates). Triggered by the Fuel desktop shortcut.' | Out-Null
 
 # --- task: fuel autoheal (logon + every 15 min, start-if-missing) ---
-$actionA = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument "/c `"$cmd`" /auto"
+$actionA = New-ScheduledTaskAction -Execute $conhost -Argument "--headless cmd.exe /c `"$cmd`" /auto"
 $t1 = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
 $t2 = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
   -RepetitionInterval (New-TimeSpan -Minutes 15) -RepetitionDuration ([TimeSpan]::FromDays(3650))
