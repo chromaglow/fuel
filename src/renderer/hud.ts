@@ -30,6 +30,7 @@ const el = {
   model: $('model'),
   status: $('status'),
   usd: $('usd'),
+  miniUsd: $('mini-usd'),
   tokens: $('tokens'),
   tps: $('tps'),
   hw: $('hw'),
@@ -290,6 +291,7 @@ function render(s: HudState): void {
   renderVram(s)
 
   el.usd.textContent = `≈ $${s.usdToday.toFixed(2)}`
+  el.miniUsd.textContent = el.usd.textContent
   el.tokens.textContent = `${fmtTokens(s.today.evalTokens + s.today.promptTokens)} tok`
 
   if (s.tokPerSec != null) {
@@ -381,6 +383,17 @@ window.fuel.onExpanded(async (next) => {
   renderPanelReceipts(el.panelReceipts, receipts)
   renderPanelNudges(el.panelNudges, nudges)
 })
+
+// Roll up / down. Main owns the state (it resizes the window and persists it)
+// and echoes it back via onMini; the initial value arrives in the URL so the
+// first paint already has the right layout.
+document.body.classList.toggle(
+  'mini',
+  new URLSearchParams(location.search).get('size') === 'mini',
+)
+window.fuel.onMini((on) => document.body.classList.toggle('mini', on))
+$('roll-up').addEventListener('click', () => window.fuel.setMini(true))
+$('roll-down').addEventListener('click', () => window.fuel.setMini(false))
 
 window.fuel.onInteractive((on) => {
   document.body.classList.toggle('interactive', on)

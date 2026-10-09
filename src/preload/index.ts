@@ -26,6 +26,15 @@ const api = {
     ipcRenderer.on('fuel:expanded', handler)
     return () => ipcRenderer.removeListener('fuel:expanded', handler)
   },
+  /** Main is the source of truth for mini; this fires after every change. */
+  onMini(cb: (on: boolean) => void): () => void {
+    const handler = (_e: unknown, on: boolean): void => cb(on)
+    ipcRenderer.on('fuel:mini', handler)
+    return () => ipcRenderer.removeListener('fuel:mini', handler)
+  },
+  setMini(on: boolean): void {
+    ipcRenderer.send('fuel:set-mini', on)
+  },
   recentEvents(): Promise<RecentEvent[]> {
     return ipcRenderer.invoke('fuel:recent-events')
   },

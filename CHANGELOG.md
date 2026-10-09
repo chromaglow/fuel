@@ -6,6 +6,42 @@ decided. Newest entry on top. This is the narrative companion to
 
 ---
 
+## 2026-10-09 — Drag anywhere, remembered placement, mini pill
+
+**Asked for.** Ezra wanted to drag the HUD straight to any monitor instead of using the tray's
+"Move to display", to have it come back to the same spot after a restart, and a third,
+smaller size that shows only the dollar amount.
+
+**Why dragging didn't work before.** It only worked in Interactive mode, which few people
+knew about. Click-through mode (the default) passes every click to the window underneath.
+
+**Hover-to-grab.** The main process already polls the cursor to drive hover-expand. It now
+also turns click-through off while the cursor is over the HUD and back on when it leaves. So
+the HUD can be dragged and its arrow clicked, and clicks everywhere else still pass through.
+The whole HUD is a drag region. The Windows system menu that appears when you right-click a
+drag region is suppressed, because its "Close" would quit fuel.
+
+**Why placement drifted (three bugs).**
+1. It was saved relative to the display's *bounds* but restored relative to its *workArea*,
+   so a top or left taskbar shifted it on every launch.
+2. It saved on every `move` event. That includes main shifting the tall expanded panel up off
+   the bottom edge, so the HUD crept upward over time.
+3. Any `display-metrics-changed` event reloaded the saved spot, which could undo a drag.
+
+**Fix.** Placement is now a top-right *anchor* (`src/main/placement.ts`, pure and unit
+tested). It is stored relative to the display's work area, with an absolute fallback point,
+under `window.anchor`; the old `window.position` value is migrated once. Only a user drag
+(`moved`, which on Windows fires at the end of a drag) or "Move to display" changes the
+anchor. Each size (compact, expanded, mini) hangs from that corner and is clamped on-screen
+without touching the anchor.
+
+**Mini pill.** ▴ on the card rolls up to a 168×52 pill showing only the dollar amount, and
+▾ rolls it back down. The pill never hover-expands. The state is persisted in `ui.mini` and
+also available as a tray checkbox. It hangs from the same top-right corner as the card, so
+after rolling up, the cursor is already over ▾.
+
+---
+
 ## 2026-08-18 — fuel becomes a multi-tenant GPU instrument (layers 1–3)
 
 **Where it started.** Ezra: "fuel doesn't seem to be firing" and "the PC locks up

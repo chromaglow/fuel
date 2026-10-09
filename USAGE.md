@@ -49,7 +49,7 @@ Run from the repo root (`C:\Users\ezras\OneDrive\Documents\work\GitHub\fuel`).
 | Key | Action |
 |---|---|
 | `Ctrl+Alt+F` | Show / hide the HUD |
-| `Ctrl+Alt+I` | Interactive (draggable) vs. click-through |
+| `Ctrl+Alt+I` | Interactive: keep the HUD clickable even when the mouse isn't over it |
 | `Ctrl+Alt+Q` | Quit fuel |
 
 ### Debug env vars
@@ -61,11 +61,26 @@ Run from the repo root (`C:\Users\ezras\OneDrive\Documents\work\GitHub\fuel`).
 
 ---
 
+## Moving and sizing the HUD
+
+- **Drag it anywhere.** Hover over the HUD and drag it to any spot on any monitor. While the
+  mouse is over it, the HUD takes clicks. Everywhere else, clicks still pass through to
+  whatever is underneath.
+- **It remembers where you left it.** The spot you drag it to is saved per monitor and
+  restored on every launch. If that monitor is gone or rearranged, the HUD lands back on
+  screen and doesn't get lost. The hover panel opening near the bottom of a screen no longer
+  moves the saved spot.
+- **Three sizes.** Compact card. The details panel that rolls down on hover. The **mini pill**,
+  which shows only the dollar amount. Click **▴** (top-right of the card) to roll up to the
+  pill, and **▾** on the pill to roll back down. The pill doesn't expand on hover. Mini is
+  remembered across restarts and is also in the tray menu.
+
 ## The tray menu (right-click the icon)
 
 - **Show / Hide HUD**
-- **Interactive** — turn off click-through so you can drag it
-- **Move to display** — send the HUD to another monitor
+- **Interactive** — keep the HUD clickable all the time (not needed to drag; hovering is enough)
+- **Mini (just the $)** — same as the ▴/▾ arrows
+- **Move to display** — send the HUD to the top-right of another monitor (handy if it's ever out of sight)
 - **Nudges** — Live / Shadow / Off (the old post-hoc "unburned fuel" detector)
 - **Toll booth** — the router (see below): **Mode** (Observe / Guard / Off) + **Sensitivity** (Careful / Normal / Eager)
 - **Valve** — force context in-path (advanced; off by default)

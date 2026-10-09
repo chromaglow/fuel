@@ -11,6 +11,7 @@
   </head>
   <body class="phase-offline">
     <main id="hud">
+      <button id="roll-up" class="fold" type="button" title="Roll up — just the $">▴</button>
       <header>
         <div id="model">—</div>
         <div id="status">connecting…</div>
@@ -52,6 +53,11 @@
         <div class="tasks" id="panel-nudges"></div>
       </section>
     </main>
+
+    <div id="mini">
+      <span id="mini-usd">≈&nbsp;$0.00</span>
+      <button id="roll-down" class="fold" type="button" title="Roll down">▾</button>
+    </div>
     <script type="module" src="./hud.ts"></script>
   </body>
 </html>

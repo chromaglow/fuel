@@ -52,6 +52,9 @@ export const WINDOW_WIDTH = 320
 export const WINDOW_HEIGHT = 352
 /** Hover-expanded, with the dense telemetry panel, contention log + nudge list. */
 export const WINDOW_HEIGHT_EXPANDED = 800
+/** Rolled-up pill: just the preserved-$ figure and the roll-down arrow. */
+export const WINDOW_WIDTH_MINI = 168
+export const WINDOW_HEIGHT_MINI = 52
 
 /**
  * Daily budget-ring target in USD. One lap of the ring = this much; past it

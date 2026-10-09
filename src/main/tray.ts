@@ -9,6 +9,8 @@ import type { Aggressiveness } from './nudge/sorter.js'
 export interface TrayHandlers {
   isInteractive: () => boolean
   setInteractive: (on: boolean) => void
+  isMini: () => boolean
+  setMini: (on: boolean) => void
   isOpenAtLogin: () => boolean
   setOpenAtLogin: (on: boolean) => void
   moveToDisplay: (displayId: number) => void
@@ -72,6 +74,12 @@ export function createTray(win: BrowserWindow, h: TrayHandlers): Tray {
         checked: h.isInteractive(),
         accelerator: 'Ctrl+Alt+I',
         click: (item) => h.setInteractive(item.checked),
+      },
+      {
+        label: 'Mini (just the $)',
+        type: 'checkbox',
+        checked: h.isMini(),
+        click: (item) => h.setMini(item.checked),
       },
       { type: 'separator' },
       {

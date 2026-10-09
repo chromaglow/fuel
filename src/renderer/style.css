@@ -46,13 +46,89 @@ body {
   padding: 8px;
 }
 
-/* Interactive mode is opt-in (tray or Ctrl+Alt+I); only then is the HUD a
-   drag handle. In click-through mode it must never capture the pointer. */
-body.interactive #hud {
+/* The whole HUD is a drag handle. While click-through is on (cursor not over
+   it) the OS never routes the mouse here, so this only bites on hover — which
+   is exactly when main turns click-through off (hover-to-grab). */
+#hud,
+#mini {
   -webkit-app-region: drag;
 }
 body.interactive {
   cursor: move;
+}
+
+/* Roll-up / roll-down arrows. no-drag, or the click would start a window drag. */
+.fold {
+  -webkit-app-region: no-drag;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--muted-bright);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1;
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  cursor: pointer;
+  flex: 0 0 auto;
+  transition:
+    color 150ms ease,
+    background 150ms ease;
+}
+.fold:hover {
+  color: var(--accent-bright);
+  background: rgba(34, 211, 238, 0.12);
+}
+
+/* Top-right of the card: the mini pill hangs from that same corner, so after
+   rolling up the cursor is already over the roll-down arrow. */
+#roll-up {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
+}
+
+/* ---------- mini pill ---------- */
+
+#mini {
+  display: none;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 7px 0 14px;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition:
+    opacity 700ms ease,
+    box-shadow 450ms ease,
+    border-color 450ms ease;
+}
+
+#mini-usd {
+  font-size: 18px;
+  font-weight: 300;
+  color: #f0f9ff;
+  text-shadow: 0 0 16px rgba(34, 211, 238, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+body.mini #hud {
+  display: none;
+}
+body.mini #mini {
+  display: flex;
 }
 
 #hud {
@@ -84,6 +160,8 @@ header {
   flex-direction: column;
   gap: 1px;
   flex: 0 0 auto;
+  /* Clear the roll-up arrow in the top-right corner. */
+  padding-right: 18px;
 }
 
 #model {
@@ -484,7 +562,8 @@ body.expanded #panel {
 
 /* ---------- phase states (SPEC.md §7.3) ---------- */
 
-.phase-offline #hud {
+.phase-offline #hud,
+.phase-offline #mini {
   opacity: 0.34;
   filter: grayscale(1);
 }
@@ -493,15 +572,18 @@ body.expanded #panel {
   color: var(--bad);
 }
 
-.phase-idle-evicted #hud {
+.phase-idle-evicted #hud,
+.phase-idle-evicted #mini {
   opacity: 0.5;
 }
 
-.phase-idle-resident #hud {
+.phase-idle-resident #hud,
+.phase-idle-resident #mini {
   opacity: 0.8;
 }
 
-.phase-warming #hud {
+.phase-warming #hud,
+.phase-warming #mini {
   opacity: 1;
   border-color: rgba(251, 191, 36, 0.3);
   box-shadow:
@@ -513,7 +595,8 @@ body.expanded #panel {
   color: var(--warn);
 }
 
-.phase-generating #hud {
+.phase-generating #hud,
+.phase-generating #mini {
   opacity: 1;
   border-color: rgba(34, 211, 238, 0.4);
   box-shadow:
@@ -521,18 +604,21 @@ body.expanded #panel {
     0 0 32px rgba(34, 211, 238, 0.2),
     0 20px 44px rgba(0, 0, 0, 0.5);
 }
-.phase-generating #usd {
+.phase-generating #usd,
+.phase-generating #mini-usd {
   text-shadow: 0 0 28px rgba(34, 211, 238, 0.6);
 }
 
 /* Truncation is a correctness alarm, not a style: it overrides the phase. */
-body.truncated #hud {
+body.truncated #hud,
+body.truncated #mini {
   border-color: rgba(251, 191, 36, 0.45);
 }
 
 /* Hovering or expanding always brings the HUD to full legibility. */
 body.expanded #hud,
-body.interactive #hud {
+body.interactive #hud,
+body.interactive #mini {
   opacity: 1;
 }
 
@@ -546,3 +632,10 @@ body.interactive #hud {
  * removing it. State changes still animate — those are one-shot transitions
  * and effectively free — but at rest the HUD is completely static.
  */
+
+/* The pill never expands, so it brightens on hover directly. DOM :hover works
+   here because main turns click-through off while the cursor is over it. */
+body.mini #mini:hover {
+  opacity: 1;
+  filter: none;
+}

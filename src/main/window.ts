@@ -1,91 +1,115 @@
-import { BrowserWindow, screen } from 'electron'
+import { BrowserWindow, screen, type Display } from 'electron'
 import { join } from 'node:path'
 import {
   WINDOW_HEIGHT,
   WINDOW_HEIGHT_EXPANDED,
+  WINDOW_HEIGHT_MINI,
   WINDOW_WIDTH,
+  WINDOW_WIDTH_MINI,
 } from '@shared/constants'
 import type { Store } from './db/index.js'
+import {
+  anchorFromBounds,
+  anchorFromLegacy,
+  defaultCorner,
+  parseLegacyPosition,
+  parseStoredAnchor,
+  placeFromCorner,
+  resolveAnchor,
+  type DisplayInfo,
+  type Size,
+  type StoredAnchor,
+} from './placement.js'
 
-const POSITION_KEY = 'window.position'
+/** Top-right anchor (see placement.ts). Supersedes LEGACY_POSITION_KEY. */
+const ANCHOR_KEY = 'window.anchor'
+const LEGACY_POSITION_KEY = 'window.position'
 const MARGIN = 24
 
-interface StoredPosition {
-  displayId: number
-  relX: number
-  relY: number
+export type HudSize = 'compact' | 'expanded' | 'mini'
+
+const SIZES: Record<HudSize, Size> = {
+  compact: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT },
+  expanded: { width: WINDOW_WIDTH, height: WINDOW_HEIGHT_EXPANDED },
+  mini: { width: WINDOW_WIDTH_MINI, height: WINDOW_HEIGHT_MINI },
+}
+
+// One HUD window per process (single-instance lock), so its placement state
+// lives at module level.
+let anchor: StoredAnchor | null = null
+let hudSize: HudSize = 'compact'
+
+const info = (d: Display): DisplayInfo => ({ id: d.id, workArea: d.workArea })
+
+function loadAnchor(store: Store): StoredAnchor | null {
+  const saved = parseStoredAnchor(store.getMeta(ANCHOR_KEY))
+  if (saved) return saved
+  // Migrate the pre-anchor format once: it was top-left relative to display
+  // *bounds*, but restored against workArea, so a top/left taskbar drifted it.
+  const legacy = parseLegacyPosition(store.getMeta(LEGACY_POSITION_KEY))
+  if (!legacy) return null
+  const d = screen.getAllDisplays().find((x) => x.id === legacy.displayId)
+  if (!d) return null
+  const migrated = anchorFromLegacy(legacy, d.bounds, info(d), WINDOW_WIDTH)
+  store.setMeta(ANCHOR_KEY, JSON.stringify(migrated))
+  return migrated
 }
 
 /**
- * Position is persisted *relative to a display*, never as absolute screen
- * coordinates. This machine has displays at x=-3440 and at (-2989,-1107), so
- * absolute coordinates are meaningless the moment a monitor is unplugged,
- * rearranged, or the primary changes.
+ * Where the window should be for the current anchor and size, clamped inside
+ * that display's work area. Re-resolved against the live display layout every
+ * time, so unplugging or rearranging monitors can't strand it off-screen.
  */
-function loadPosition(store: Store): StoredPosition | null {
-  const raw = store.getMeta(POSITION_KEY)
-  if (!raw) return null
-  try {
-    const p = JSON.parse(raw) as StoredPosition
-    if (
-      typeof p.displayId === 'number' &&
-      typeof p.relX === 'number' &&
-      typeof p.relY === 'number'
-    ) {
-      return p
-    }
-  } catch {
-    // Corrupt value: fall through to the default placement.
+function targetBounds(size: HudSize): Electron.Rectangle {
+  const resolved = resolveAnchor(anchor, screen.getAllDisplays().map(info))
+  if (resolved) {
+    return placeFromCorner(resolved.corner, SIZES[size], resolved.display.workArea)
   }
-  return null
-}
-
-function defaultPlacement(): { x: number; y: number } {
   const { workArea } = screen.getPrimaryDisplay()
-  return {
-    x: workArea.x + workArea.width - WINDOW_WIDTH - MARGIN,
-    y: workArea.y + MARGIN,
+  return placeFromCorner(defaultCorner(workArea, MARGIN), SIZES[size], workArea)
+}
+
+/** True while main is moving the window itself, so it isn't saved as a drag. */
+let placing = false
+
+function applyPlacement(win: BrowserWindow): void {
+  if (win.isDestroyed()) return
+  const next = targetBounds(hudSize)
+  const b = win.getBounds()
+  if (
+    b.x === next.x &&
+    b.y === next.y &&
+    b.width === next.width &&
+    b.height === next.height
+  ) {
+    return
+  }
+  placing = true
+  try {
+    win.setBounds(next, false)
+  } finally {
+    placing = false
   }
 }
 
-/** Resolve stored relative coordinates back to absolute, clamped on-screen. */
-function resolvePlacement(store: Store): { x: number; y: number } {
-  const saved = loadPosition(store)
-  if (!saved) return defaultPlacement()
-
-  const display = screen.getAllDisplays().find((d) => d.id === saved.displayId)
-  if (!display) return defaultPlacement()
-
-  const { workArea } = display
-  // Clamp so the window stays fully inside that display's work area, even if
-  // the monitor's resolution changed since the position was saved.
-  const maxX = workArea.x + Math.max(0, workArea.width - WINDOW_WIDTH)
-  const maxY = workArea.y + Math.max(0, workArea.height - WINDOW_HEIGHT)
-  const x = Math.min(Math.max(workArea.x + saved.relX, workArea.x), maxX)
-  const y = Math.min(Math.max(workArea.y + saved.relY, workArea.y), maxY)
-  return { x: Math.round(x), y: Math.round(y) }
-}
-
-function savePosition(win: BrowserWindow, store: Store): void {
+/** A user drag ended: the window's current top-right becomes the anchor. */
+function saveAnchorFromWindow(win: BrowserWindow, store: Store): void {
   if (win.isDestroyed()) return
   const bounds = win.getBounds()
   // getDisplayMatching picks the display with the largest overlap, which is
   // the right answer for a window straddling two monitors.
-  const display = screen.getDisplayMatching(bounds)
-  const pos: StoredPosition = {
-    displayId: display.id,
-    relX: bounds.x - display.bounds.x,
-    relY: bounds.y - display.bounds.y,
-  }
-  store.setMeta(POSITION_KEY, JSON.stringify(pos))
+  anchor = anchorFromBounds(bounds, info(screen.getDisplayMatching(bounds)))
+  store.setMeta(ANCHOR_KEY, JSON.stringify(anchor))
 }
 
-export function createHudWindow(store: Store): BrowserWindow {
-  const { x, y } = resolvePlacement(store)
+export function createHudWindow(store: Store, initialSize: HudSize): BrowserWindow {
+  anchor = loadAnchor(store)
+  hudSize = initialSize
+  const { x, y, width, height } = targetBounds(hudSize)
 
   const win = new BrowserWindow({
-    width: WINDOW_WIDTH,
-    height: WINDOW_HEIGHT,
+    width,
+    height,
     x,
     y,
     frame: false,
@@ -117,20 +141,22 @@ export function createHudWindow(store: Store): BrowserWindow {
   win.setAlwaysOnTop(true, 'screen-saver')
   win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true })
 
-  let saveTimer: NodeJS.Timeout | null = null
-  const debouncedSave = (): void => {
-    if (saveTimer) clearTimeout(saveTimer)
-    saveTimer = setTimeout(() => savePosition(win, store), 400)
-  }
-  win.on('move', debouncedSave)
-  win.on('moved', debouncedSave)
+  // The whole HUD is a drag region, and right-clicking a drag region on
+  // Windows opens the system menu — whose "Close" would quit fuel. Suppress it.
+  win.on('system-context-menu', (e) => e.preventDefault())
 
-  // A display being added or removed can strand the window off-screen.
-  const reflow = (): void => {
-    if (win.isDestroyed()) return
-    const p = resolvePlacement(store)
-    win.setPosition(p.x, p.y)
-  }
+  // On Windows 'moved' fires once at the end of a user drag (WM_EXITSIZEMOVE),
+  // not for programmatic setBounds — so only drags move the anchor. The
+  // per-pixel 'move' event is deliberately not saved: it also fires when main
+  // shifts the tall expanded panel up off the bottom edge, which used to be
+  // persisted and made the HUD creep upward over time.
+  win.on('moved', () => {
+    if (!placing) saveAnchorFromWindow(win, store)
+  })
+
+  // Monitor added/removed/rescaled: re-resolve the same anchor against the
+  // new layout (clamped on-screen) rather than resetting the user's spot.
+  const reflow = (): void => applyPlacement(win)
   screen.on('display-removed', reflow)
   screen.on('display-added', reflow)
   screen.on('display-metrics-changed', reflow)
@@ -155,15 +181,18 @@ export function createHudWindow(store: Store): BrowserWindow {
   )
 
   // Load the renderer. In `electron-vite dev` the renderer is served over HTTP
-  // and its URL arrives via env; a packaged/built run loads from disk.
+  // and its URL arrives via env; a packaged/built run loads from disk. The
+  // initial size rides along as a query param so the very first paint is
+  // already the right layout (an IPC message could land after the window shows).
+  const query = { size: initialSize }
   const devUrl = process.env['ELECTRON_RENDERER_URL']
   if (devUrl) {
     log('loading dev url', devUrl)
-    void win.loadURL(devUrl)
+    void win.loadURL(`${devUrl}?size=${initialSize}`)
   } else {
     const file = join(import.meta.dirname, '../renderer/index.html')
     log('loading file', file)
-    win.loadFile(file).catch((e) => console.error('[fuel] loadFile failed:', e))
+    win.loadFile(file, { query }).catch((e) => console.error('[fuel] loadFile failed:', e))
   }
 
   win.once('ready-to-show', () => {
@@ -187,20 +216,14 @@ export function setClickThrough(win: BrowserWindow, on: boolean): void {
 }
 
 /**
- * Grow the window for the expanded panel. If the taller window would run off
- * the bottom of its display, shift it up rather than let it spill off-screen.
+ * Switch between compact, hover-expanded and the mini pill. Every size hangs
+ * from the same top-right anchor; if the taller expanded window would run off
+ * the bottom of its display it is drawn shifted up, but the anchor is
+ * untouched, so collapsing puts it back exactly where it was.
  */
-export function setExpandedHeight(win: BrowserWindow, expanded: boolean): void {
-  if (win.isDestroyed()) return
-  const height = expanded ? WINDOW_HEIGHT_EXPANDED : WINDOW_HEIGHT
-  const b = win.getBounds()
-  if (b.height === height) return
-
-  const { workArea } = screen.getDisplayMatching(b)
-  const maxY = workArea.y + workArea.height - height
-  const y = Math.min(b.y, Math.max(workArea.y, maxY))
-
-  win.setBounds({ x: b.x, y, width: WINDOW_WIDTH, height }, false)
+export function setHudSize(win: BrowserWindow, size: HudSize): void {
+  hudSize = size
+  applyPlacement(win)
 }
 
 /**
@@ -244,16 +267,11 @@ export function moveToDisplay(
   const display = screen.getAllDisplays().find((d) => d.id === displayId)
   if (!display || win.isDestroyed()) return
 
-  const { workArea } = display
-  const { height } = win.getBounds()
-  const x = workArea.x + workArea.width - WINDOW_WIDTH - MARGIN
-  const y = workArea.y + MARGIN
-
-  win.setBounds({
-    x: Math.round(x),
-    y: Math.round(y),
-    width: WINDOW_WIDTH,
-    height,
-  })
-  savePosition(win, store)
+  const corner = defaultCorner(display.workArea, MARGIN)
+  anchor = anchorFromBounds(
+    { x: corner.x, y: corner.y, width: 0, height: 0 },
+    info(display),
+  )
+  store.setMeta(ANCHOR_KEY, JSON.stringify(anchor))
+  applyPlacement(win)
 }

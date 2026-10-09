@@ -30,7 +30,8 @@ import {
   listDisplays,
   moveToDisplay,
   setClickThrough,
-  setExpandedHeight,
+  setHudSize,
+  type HudSize,
 } from './window.js'
 import { createTray } from './tray.js'
 import { GpuMonitor } from './sensors/nvidiaSmi.js'
@@ -136,8 +137,14 @@ const PING_INTERVAL_MS = 5000
 let lastPingAt = 0
 let lastPingOk = false
 
-/** Interactive = click-through disabled, so the HUD can be dragged. */
+/**
+ * Interactive = click-through permanently off. Not needed to drag any more —
+ * hovering makes the HUD grabbable (see hover / expand) — but kept for anyone
+ * who wants it to stay clickable.
+ */
 let interactive = false
+/** Rolled up to the mini pill: just the preserved-$ figure. Persisted. */
+let mini = false
 let goalUsd = DEFAULT_DAILY_GOAL_USD
 
 /**
@@ -152,6 +159,7 @@ let proxyEnabled = false
 
 function loadSettings(): void {
   interactive = store.getMeta('ui.interactive') === '1'
+  mini = store.getMeta('ui.mini') === '1'
   const goal = Number(store.getMeta('ui.goalUsd'))
   if (Number.isFinite(goal) && goal > 0) goalUsd = goal
   const mode = store.getMeta('nudge.mode')
@@ -259,6 +267,8 @@ async function setProxyEnabled(on: boolean): Promise<boolean> {
 // ---------------------------------------------------------- hover / expand
 
 let expanded = false
+/** Cursor is over the HUD, so it is temporarily clickable/draggable. */
+let hovered = false
 let hoverTimer: NodeJS.Timeout | null = null
 let outsideTicks = 0
 
@@ -266,11 +276,43 @@ let outsideTicks = 0
 const COLLAPSE_GRACE_TICKS = 2
 const HOVER_POLL_MS = 180
 
+function currentSize(): HudSize {
+  if (mini) return 'mini'
+  return expanded ? 'expanded' : 'compact'
+}
+
 function setExpanded(next: boolean): void {
+  // The mini pill never rolls the panel down; its arrow restores the card.
+  if (mini && next) return
   if (expanded === next || !win) return
   expanded = next
-  setExpandedHeight(win, next)
+  setHudSize(win, currentSize())
   win.webContents.send('fuel:expanded', next)
+}
+
+/**
+ * Hover-to-grab. Click-through stays the default, but while the cursor is over
+ * the HUD it accepts the mouse, so it can be dragged anywhere and its roll-up
+ * arrow clicked — no Interactive mode needed. Clicks anywhere else still pass
+ * straight through to the window beneath.
+ */
+function setHovered(next: boolean): void {
+  if (hovered === next || !win) return
+  hovered = next
+  if (!interactive) setClickThrough(win, !next)
+}
+
+function setMini(on: boolean): void {
+  if (!win) return
+  mini = on
+  store.setMeta('ui.mini', on ? '1' : '0')
+  if (expanded) {
+    expanded = false
+    win.webContents.send('fuel:expanded', false)
+  }
+  setHudSize(win, currentSize())
+  win.webContents.send('fuel:mini', on)
+  tray?.rebuild?.()
 }
 
 function startHoverWatch(): void {
@@ -278,8 +320,10 @@ function startHoverWatch(): void {
     if (!win || win.isDestroyed()) return
     if (isCursorOver(win)) {
       outsideTicks = 0
+      setHovered(true)
       setExpanded(true)
-    } else if (expanded && ++outsideTicks >= COLLAPSE_GRACE_TICKS) {
+    } else if (hovered && ++outsideTicks >= COLLAPSE_GRACE_TICKS) {
+      setHovered(false)
       setExpanded(false)
     }
   }, HOVER_POLL_MS)
@@ -288,7 +332,7 @@ function startHoverWatch(): void {
 function setInteractive(on: boolean): void {
   interactive = on
   store.setMeta('ui.interactive', on ? '1' : '0')
-  if (win) setClickThrough(win, !on)
+  if (win) setClickThrough(win, !(on || hovered))
   win?.webContents.send('fuel:interactive', on)
   tray?.rebuild?.()
 }
@@ -564,6 +608,8 @@ function registerIpc(): void {
     store.recentEvictions(RECENT_EVENT_LIMIT),
   )
 
+  ipcMain.on('fuel:set-mini', (_e, on: unknown) => setMini(on === true))
+
   ipcMain.on('fuel:quit', () => app.quit())
 }
 
@@ -599,7 +645,7 @@ if (!app.requestSingleInstanceLock()) {
     utilHistory = store.recentUtil(UTIL_HISTORY_LEN)
     truncationWarning = store.recentTruncation()
 
-    win = createHudWindow(store)
+    win = createHudWindow(store, mini ? 'mini' : 'compact')
     registerIpc()
     startSensors()
     startHoverWatch()
@@ -616,6 +662,8 @@ if (!app.requestSingleInstanceLock()) {
     tray = createTray(win, {
       isInteractive: () => interactive,
       setInteractive,
+      isMini: () => mini,
+      setMini,
       // In dev, process.execPath is the bare electron binary — it needs the app
       // path as an argument or the login item launches an empty Electron shell.
       isOpenAtLogin: () =>
