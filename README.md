@@ -72,7 +72,7 @@ Zero native dependencies — persistence uses Node 24's built-in `node:sqlite`, 
 | `Ctrl+Alt+F` | show / hide |
 | `Ctrl+Alt+Q` | quit |
 
-Drag the panel anywhere; position is remembered per-monitor. `node scripts/inspect.mjs` dumps what's been captured.
+Hover the HUD and drag it anywhere, on any monitor. Clicks only reach it while the mouse is over it; everywhere else they pass through. Where you leave it is remembered per monitor across restarts. Click **▴** to roll it up into a mini pill showing only the dollar amount; its fuel ticks light green while any model is processing locally (amber while one loads). **▾** rolls it back down. See [USAGE.md](./USAGE.md#moving-and-sizing-the-hud). `node scripts/inspect.mjs` dumps what's been captured.
 
 Data lives in `%LOCALAPPDATA%\fuel\fuel.db`.
 

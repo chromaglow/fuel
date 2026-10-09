@@ -136,12 +136,13 @@ Code is the hook *registration* itself** (installing/removing/re-registering the
 `settings.json`). Do not re-register the hook casually — it's already installed.
 
 ### 4b. The tray vs. the HUD panel
-- The floating **HUD panel is deliberately click-through** (observe-only, no buttons). If
-  you "can only observe," you're looking at the panel — that's expected.
+- The floating **HUD panel is click-through** except while the mouse is over it. Hovering
+  lets you drag it and use its only button (▴/▾, roll up to the mini pill and back).
+  Everything else is observe-only.
 - All controls live on the **tray icon** (bottom-right, near the clock; click the `^`
   overflow chevron if hidden). **Right-click** = full menu. **Left-click** = just toggle
   the HUD. (Source: `src/main/tray.ts`.)
-- Hotkeys: `Ctrl+Alt+F` show/hide · `Ctrl+Alt+I` interactive (drag) · `Ctrl+Alt+Q` quit.
+- Hotkeys: `Ctrl+Alt+F` show/hide · `Ctrl+Alt+I` interactive (stay clickable when not hovered) · `Ctrl+Alt+Q` quit.
 
 ### 4c. The router logic (why a given file routes where it does)
 Six signals, verifiability-weighted blend, banded into local/gray/cloud, with hard guards

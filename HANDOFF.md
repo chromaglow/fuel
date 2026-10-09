@@ -20,6 +20,7 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 
 | Milestone | State | What it delivered |
 |---|---|---|
+| **HUD placement + mini pill (2026-10-09)** | ✅ done, live | Hover-to-grab drag (no Interactive mode needed); top-right anchor remembered per monitor (`placement.ts`); mini pill with fuel ticks lit by any local processing (`collector/activity.ts` + shim `/activity` beacons). **103 tests.** |
 | **Multi-tenant (L1–L3, 2026-08-18)** | ✅ done, live | tenants registry; `residents[]` + VRAM budget bar; eviction detector; CPU-split + keep-alive alarms; `OLLAMA_KEEP_ALIVE=1h`; per-tenant $ at counterfactual rates; lapping ring. **82 tests.** |
 | **M1 — Sensor** | ✅ done | 1 Hz GPU + model-residency telemetry, `server.log` tailer, SQLite persistence, live HUD |
 | **M2 — HUD** | ✅ done | Canvas gauge (ring + arc + sparkline), hover-expand panel, click-through, tray, six states, idle CPU 1.5% |
@@ -94,7 +95,7 @@ node integrations/valve.mjs status     # check valve relocation (read-only)
 npx electron . --unhook                # emergency: undo the valve relocation, then exit
 ```
 
-Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). **Auto-start (2026-07-23):** because fuel runs unpackaged, the tray "Launch at login" toggle is unreliable (it registers bare `electron.exe`); instead a **Startup shortcut** `…\Start Menu\Programs\Startup\fuel.lnk` launches `node_modules\electron\dist\electron.exe "<fuel dir>"` at login (single-instance lock prevents double-launch). Remove it via `shell:startup` or delete `fuel.lnk` to disable auto-start. Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive/draggable, `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow), the **Toll booth** (mode: observe/guard/off + sensitivity: careful/normal/eager), and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
+Runtime data lives in `%LOCALAPPDATA%\fuel\` (`fuel.db`, `spool.jsonl`). **Auto-start (2026-07-23):** because fuel runs unpackaged, the tray "Launch at login" toggle is unreliable (it registers bare `electron.exe`); instead a **Startup shortcut** `…\Start Menu\Programs\Startup\fuel.lnk` launches `node_modules\electron\dist\electron.exe "<fuel dir>"` at login (single-instance lock prevents double-launch). Remove it via `shell:startup` or delete `fuel.lnk` to disable auto-start. Keyboard: `Ctrl+Alt+F` show/hide, `Ctrl+Alt+I` interactive (keeps the HUD clickable even when not hovered; dragging works without it), `Ctrl+Alt+Q` quit. The tray menu toggles nudge mode (shadow/live/off — default shadow), the **Toll booth** (mode: observe/guard/off + sensitivity: careful/normal/eager), and much else. Debug: `FUEL_DEBUG=1` logs to stderr; `FUEL_DEBUG_SHOT=<path> FUEL_DEBUG_SHOT_DELAY=<ms>` captures the window's own render (the only reliable way to screenshot a layered window).
 
 ---
 
@@ -131,6 +132,12 @@ Read these before touching the relevant area — each cost real time to find.
 14. **The valve only ever inspects two endpoints, and only the request body.** `POST /api/generate` and `/api/chat` are buffered (small — just the prompt), JSON-parsed, and enriched (num_ctx floor + keep_alive). *Everything else* — `/api/ps`, `/api/tags`, `/api/version`, embeddings, GETs — is a pure streaming byte pipe. Responses are *always* streamed chunk-by-chunk, so NDJSON token streams are never buffered. Three layers keep it from ever breaking inference: a per-request try/catch that forwards the client's original bytes on any parse/rewrite error (SPEC §4.3 #2); the watchdog's global bypass after 3 failed health checks (#3); and the enable guard that refuses to bind unless the relocated Ollama is already answering on `:11435`. The context-forcing logic (`rewriteBody`) and the bypass state machine (`Watchdog`) are pure and unit-tested; the HTTP wiring was verified on the wire against a fake upstream (floor applied, passthrough clean, bypass verbatim).
 
 15. **`node --import` needs a `file://` URL, not a bare Windows path.** Only relevant to ad-hoc test harnesses: `--import "C:\...\hook.mjs"` fails with `ERR_UNSUPPORTED_ESM_URL_SCHEME` (protocol `c:`). Use `--import "file:///C:/.../hook.mjs"`, or a repo-relative path like the real test command does (`--import ./test/register.mjs`). The script *path* argument is fine either way; only `--import` is picky.
+
+16. **Only save the window position on `moved`, never `move`.** On Windows `moved` fires once at the end of a *user* drag (WM_EXITSIZEMOVE); `move` also fires for every programmatic `setBounds`. Saving on `move` persisted the shift-up main applies when the tall expanded panel would run off the bottom edge, and the HUD crept upward over time. Placement is now a top-right *anchor* (`src/main/placement.ts`) that only a drag or tray → Move to display changes; every size hangs from it and is clamped on-screen without touching it. The old code also saved relative to display `bounds` but restored relative to `workArea`, so a top/left taskbar shifted it on every launch.
+
+17. **A full-window drag region opens the Windows system menu on right-click**, and its *Close* quits fuel (window-all-closed → quit). Suppressed with `win.on('system-context-menu', e => e.preventDefault())` in `window.ts`. Buttons inside the drag region need `-webkit-app-region: no-drag` or clicks start a drag.
+
+18. **Hover-to-grab.** Click-through stays the default; the existing hover poll lifts it (and makes the window focusable) while the cursor is over the HUD. That makes it draggable and its ▴/▾ arrows clickable, and is why DOM `:hover` works on the mini pill. Clicking or dragging it does give it keyboard focus until you click elsewhere.
 
 ---
 
@@ -280,7 +287,8 @@ the economics rows; the shim's own client name is still kept on the event.
 SPEC.md                      full design (13 sections) + measured baselines
 src/main/                    Electron main: sensors/, collector/, nudge/, db/, window, tray, metrics
   sensors/                   nvidiaSmi (GpuMonitor), ollamaApi, ollamaLog (tailer + parser)
-  collector/                 server (:47113, /ingest + /hook + /decide), reconcile (dedup), spool
+  collector/                 server (:47113, /ingest + /hook + /decide + /activity), reconcile (dedup), spool, activity (local-processing state for the mini pill)
+  window.ts · placement.ts   HUD window: hover-to-grab, three sizes · pure top-right anchor math (unit tested)
   nudge/                     classify (old M4 nudge) · Toll Booth: signals (M1), sorter (M2), gate (M4)
   proxy/                     M5 valve: rewrite (pure ctx/keep_alive forcing), watchdog (bypass FSM), server (Valve HTTP proxy)
 src/renderer/                HUD: gauges/, hud.ts (event-driven render loop), panel (incl. toll-booth tile+feed), theme
@@ -290,7 +298,7 @@ integrations/hook.cjs        PostToolUse nudge hook (old M4) — .cjs, not .js (
 integrations/precheck.cjs    PreToolUse Toll-Booth gate → POSTs /decide; fail-open (see "Activating the Toll Booth")
 integrations/install.mjs     status | install | uninstall — wires shim + hook into Claude (live configs)
 integrations/valve.mjs       status | hook | unhook — relocates Ollama to :11435 via OLLAMA_HOST (M5)
-test/                        node --test suites (reconcile, parse, collector, classify, rewrite, watchdog, signals, sorter, receipts, gate) + alias hook
+test/                        node --test suites (reconcile, parse, collector, classify, rewrite, watchdog, signals, sorter, receipts, gate, evictions, placement, activity) + alias hook
 scripts/                     inspect.mjs (DB dump), make-icon.mjs (PNG gen)
 config/pricing.json          Claude API rates for the budget estimate
 ```
