@@ -124,13 +124,13 @@ body.interactive {
   min-width: 0;
 }
 
-/* Fuel ticks: ten segments along the pill's floor, lit while one of your
-   offloads runs (green working, amber cold-loading). Hidden at idle. */
+/* Fuel ticks: ten segments along the pill's floor, lit while anything is
+   processed locally (green working, amber cold-loading). Hidden at idle. */
 #mini {
   position: relative;
   --tone: var(--good);
 }
-#mini[data-offload="loading"] {
+#mini[data-activity="loading"] {
   --tone: var(--warn);
 }
 #mini-meter {
@@ -157,19 +157,18 @@ body.interactive {
   background: var(--tone);
   box-shadow: 0 0 5px var(--tone);
 }
-#mini:not([data-offload="idle"]) #mini-meter {
+#mini:not([data-activity="idle"]) #mini-meter {
   opacity: 1;
 }
 /* Lift the number a touch so it clears the ticks. */
-#mini:not([data-offload="idle"]) #mini-usd {
+#mini:not([data-activity="idle"]) #mini-usd {
   transform: translateY(-2px);
 }
 #mini-usd {
   transition: transform 300ms ease;
 }
-/* Active: tint the rim and bring the pill to full strength whatever the
-   card's phase says (the DJ alone can leave the card dim). */
-body #mini:not([data-offload="idle"]) {
+/* Active: tint the rim and bring the pill to full strength. */
+body #mini:not([data-activity="idle"]) {
   opacity: 1;
   filter: none;
   border-color: color-mix(in srgb, var(--tone) 38%, transparent);

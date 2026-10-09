@@ -1,6 +1,6 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { OffloadActivity, parseActivity } from '../src/main/collector/activity.ts'
+import { localActivity, OffloadActivity, parseActivity } from '../src/main/collector/activity.ts'
 
 test('parseActivity accepts a start/end beacon', () => {
   assert.deepEqual(parseActivity({ id: 'abc', state: 'start', model: 'qwen2.5-coder:7b' }), {
@@ -53,4 +53,27 @@ test('a lost end beacon expires instead of lighting the pill forever', () => {
   a.observe({ id: '1', state: 'start', model: 'coder' }, 0)
   assert.equal(a.activeModels(1000).length, 1)
   assert.equal(a.activeModels(1001).length, 0)
+})
+
+const CODER = 'qwen2.5-coder:7b'
+const DJ = 'llama3.1:8b'
+
+test('localActivity lights for any tenant generating, not just your offloads', () => {
+  assert.equal(localActivity('generating', [], new Set([DJ])), 'working')
+  assert.equal(localActivity('idle-resident', [], new Set([DJ])), 'idle')
+  assert.equal(localActivity('idle-evicted', [], new Set()), 'idle')
+  assert.equal(localActivity('offline', [], new Set()), 'idle')
+})
+
+test('localActivity shows loading for a cold start', () => {
+  // Nothing resident yet, request in flight (any tenant).
+  assert.equal(localActivity('warming', [], new Set()), 'loading')
+  // Your coder loading while the DJ is already resident and generating: the
+  // phase alone says 'generating'; the beacon reveals the cold start.
+  assert.equal(localActivity('generating', [CODER], new Set([DJ])), 'loading')
+})
+
+test('localActivity shows working once your coder is resident', () => {
+  assert.equal(localActivity('idle-resident', [CODER], new Set([CODER])), 'working')
+  assert.equal(localActivity('generating', [CODER], new Set([CODER, DJ])), 'working')
 })

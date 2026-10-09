@@ -353,15 +353,15 @@ function render(s: HudState): void {
 }
 
 /**
- * The mini pill's fuel ticks: lit only while one of *your* offloads is in
- * flight (amber loading, green working), ten segments tracking GPU load.
+ * The mini pill's fuel ticks: lit while anything is processed locally, by
+ * any tenant (amber loading, green working), ten segments tracking GPU load.
  * At least one tick stays lit while working, so a light moment never reads
  * as idle. Updates once a second with the state push; no animation loop.
  */
 function renderMiniMeter(s: HudState): void {
-  el.mini.dataset['offload'] = s.offload
-  const util = s.offload === 'idle' ? 0 : (s.gpu?.utilGpu ?? 0)
-  const lit = s.offload === 'idle' ? 0 : Math.max(1, Math.round(util / 10))
+  el.mini.dataset['activity'] = s.activity
+  const util = s.activity === 'idle' ? 0 : (s.gpu?.utilGpu ?? 0)
+  const lit = s.activity === 'idle' ? 0 : Math.max(1, Math.round(util / 10))
   el.miniTicks.forEach((t, i) => t.classList.toggle('on', i < lit))
 }
 

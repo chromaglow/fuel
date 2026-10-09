@@ -1,12 +1,13 @@
 /**
- * Which of *your* offloads are running right now.
+ * Is anything being processed locally right now, by any tenant?
  *
- * The Ollama log's busy signal can't tell your coder from WEYLD's DJ (which
- * calls ~1,500×/day), and the shim's /ingest record only arrives once a call
- * has finished. So the shim also POSTs a tiny /activity beacon when a
- * local_coding_task starts and another when it ends. This drives the mini
- * pill's meter, which should light up for your own delegations only.
+ * Two sources feed it. The card-wide phase (Ollama log busy flag + GPU load)
+ * sees every tenant, including WEYLD's DJ. The shim's /activity beacons (sent
+ * when a local_coding_task starts and ends) add one thing the phase misses:
+ * your coder cold-loading while another tenant is already resident, which the
+ * phase reports as plain 'generating'. Drives the mini pill's fuel ticks.
  */
+import type { HudPhase, LocalActivity } from '@shared/types'
 
 /** The JSON the shim POSTs to /activity. */
 export interface ActivityBeacon {
@@ -28,6 +29,21 @@ export function parseActivity(body: unknown): ActivityBeacon | null {
   if (b['state'] !== 'start' && b['state'] !== 'end') return null
   const model = typeof b['model'] === 'string' && b['model'] ? b['model'] : null
   return { id: b['id'], state: b['state'], model }
+}
+
+/**
+ * Amber when a model is loading (your coder not resident yet, or a cold start
+ * with nothing resident), green when anything is generating, else idle.
+ */
+export function localActivity(
+  phase: HudPhase,
+  offloadModels: string[],
+  residentNames: Set<string>,
+): LocalActivity {
+  if (offloadModels.some((m) => !residentNames.has(m))) return 'loading'
+  if (offloadModels.length > 0 || phase === 'generating') return 'working'
+  if (phase === 'warming') return 'loading'
+  return 'idle'
 }
 
 export class OffloadActivity {

@@ -74,11 +74,12 @@ Run from the repo root (`C:\Users\ezras\OneDrive\Documents\work\GitHub\fuel`).
   which shows only the dollar amount. Click **▴** (top-right of the card) to roll up to the
   pill, and **▾** on the pill to roll back down. The pill doesn't expand on hover. Mini is
   remembered across restarts and is also in the tray menu.
-- **Fuel ticks on the pill.** While one of *your* offloads is running (Claude handing work to
-  `local_coding_task`), ten small segments light up along the bottom of the pill. They're
-  green while the coder is working, and the number lit follows GPU load. They're amber while
-  the model is still loading. Other tenants on the card, like the WEYLD DJ, don't light them.
-  This needs the current shim (`node integrations/install.mjs install`, then restart Claude).
+- **Fuel ticks on the pill.** Whenever anything is being processed locally (your offloads,
+  the WEYLD DJ, any model on the card), ten small segments light up along the bottom of the
+  pill. They're green while a model is working, and the number lit follows GPU load. They're
+  amber while a model is still loading. The current shim (`node integrations/install.mjs
+  install`, then restart Claude) also lets them show your coder loading while the DJ is
+  already running.
 
 ## The tray menu (right-click the icon)
 

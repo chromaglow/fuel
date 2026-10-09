@@ -184,14 +184,14 @@ export interface HudState {
   /** Whether nudges are surfaced, recorded silently, or off. */
   nudgeMode: NudgeMode
   /**
-   * Your own offloads in flight (shim /activity beacons), not the whole card:
-   * 'loading' while the coder model isn't resident yet (cold start),
-   * 'working' once it is. Drives the mini pill's meter.
+   * Local processing by any tenant (your coder, the DJ, anything on the
+   * card): 'loading' during a cold start, 'working' while generating.
+   * Drives the mini pill's fuel ticks.
    */
-  offload: OffloadState
+  activity: LocalActivity
 }
 
-export type OffloadState = 'idle' | 'loading' | 'working'
+export type LocalActivity = 'idle' | 'loading' | 'working'
 
 /** One row in the expanded panel's recent-task list. */
 export interface RecentEvent {

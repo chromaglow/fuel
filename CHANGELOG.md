@@ -12,14 +12,15 @@ decided. Newest entry on top. This is the narrative companion to
 GPU is working. He picked "fuel ticks" (ten segments along the bottom of the pill) from six
 mockups.
 
-**Whose work counts.** Only your own offloads. The Ollama log's busy flag can't tell your
-coder from WEYLD's DJ (~1,500 calls a day), and the shim's `/ingest` record only arrives
-after a call finishes. So the shim now also sends a live-only `/activity` beacon when a call
-starts and another when it ends (`end` is sent from a `finally` block, so a cancelled call
-still clears). `OffloadActivity` in `src/main/collector/activity.ts` tracks calls in flight
-and expires any whose `end` beacon was lost after 310 s, just over the shim's 300 s timeout.
-`HudState.offload` is `loading` while the requested model isn't resident yet and `working`
-once it is.
+**Whose work counts.** Any local processing, by any tenant. A first cut lit only for your own
+offloads; Ezra wants the DJ and everything else to count too. `localActivity()` in
+`src/main/collector/activity.ts` combines two sources. The card-wide phase (Ollama log busy
+flag + GPU load) sees every tenant. The shim's live-only `/activity` beacons (start and end
+of each `local_coding_task`, with `end` sent from a `finally` block) add the one case the
+phase misses: your coder cold-loading while the DJ is already resident, which the phase
+reports as plain `generating`. `OffloadActivity` expires a call whose `end` beacon was lost
+after 310 s, just over the shim's 300 s timeout. `HudState.activity` is `loading` during a
+cold start, `working` while anything generates, and `idle` otherwise.
 
 **Display.** Lit ticks = GPU load / 10, with at least one lit while working. They're green
 while working and amber while loading, and the pill's edge picks up the same color. The meter

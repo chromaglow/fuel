@@ -6,7 +6,6 @@ import type {
   EvictionEvent,
   HudPhase,
   HudState,
-  OffloadState,
   Nudge,
   NudgeMode,
   OffloadEvent,
@@ -25,7 +24,7 @@ import {
   UTIL_HISTORY_LEN,
 } from '@shared/constants'
 import { Store } from './db/index.js'
-import { OffloadActivity } from './collector/activity.js'
+import { localActivity, OffloadActivity } from './collector/activity.js'
 import {
   createHudWindow,
   isCursorOver,
@@ -358,17 +357,6 @@ function derivePhase(
   return 'idle-evicted'
 }
 
-/**
- * Your offloads only. Amber while the requested model isn't resident yet (a
- * cold start in progress), green once it is.
- */
-function offloadState(now: number): OffloadState {
-  const models = offloads.activeModels(now)
-  if (models.length === 0) return 'idle'
-  const resident = new Set(residents.map((r) => r.name))
-  return models.some((m) => resident.has(m)) ? 'working' : 'loading'
-}
-
 async function collect(): Promise<void> {
   const now = Date.now()
 
@@ -432,9 +420,10 @@ async function collect(): Promise<void> {
   const today = store.todayTotals()
   const byTenant = tenantTotals()
 
+  const phase = derivePhase(online, residents.length > 0, logBusy, util)
   const state: HudState = {
     ts: now,
-    phase: derivePhase(online, residents.length > 0, logBusy, util),
+    phase,
     ollama: online ? 'online' : 'offline',
     gpu,
     residents,
@@ -449,7 +438,11 @@ async function collect(): Promise<void> {
     goalUsd,
     unburnedToday: nudgeMode === 'off' ? 0 : store.todayNudgeCount(),
     nudgeMode,
-    offload: offloadState(now),
+    activity: localActivity(
+      phase,
+      offloads.activeModels(now),
+      new Set(residents.map((r) => r.name)),
+    ),
   }
 
   win?.webContents.send('fuel:state', state)
