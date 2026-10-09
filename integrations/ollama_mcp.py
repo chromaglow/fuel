@@ -38,6 +38,7 @@ import json
 import os
 import time
 import urllib.request
+import uuid
 
 import httpx
 from mcp.server import Server
@@ -214,6 +215,26 @@ def _emit(record: dict) -> None:
         pass  # Even the spool failing must not surface to the caller.
 
 
+def _beacon(call_id: str, state: str) -> None:
+    """
+    Tell fuel a delegation started or ended, so the HUD's mini pill can light up
+    while *your* coder is working (the Ollama log can't tell it from other
+    tenants). Live-only: no spool, since a stale "started" has no value later.
+    Never raises.
+    """
+    payload = json.dumps({"id": call_id, "state": state, "model": MODEL}).encode("utf-8")
+    try:
+        req = urllib.request.Request(
+            f"{COLLECTOR_URL}/activity",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        urllib.request.urlopen(req, timeout=0.25).close()
+    except Exception:
+        pass  # fuel not running — nothing to light up.
+
+
 @server.call_tool()
 async def call_tool(name: str, arguments: dict):
     if name == "route_check":
@@ -238,40 +259,46 @@ async def call_tool(name: str, arguments: dict):
     )
 
     started_ms = int(time.time() * 1000)
+    call_id = uuid.uuid4().hex
+    _beacon(call_id, "start")
     final = {}
     text_parts = []
     error = None
 
-    async with httpx.AsyncClient() as client:
-        try:
-            # Stream so per-phase timings and token counts are captured. The
-            # final streamed object carries the aggregate metrics.
-            async with client.stream(
-                "POST",
-                f"{OLLAMA_URL}/api/generate",
-                json={
-                    "model": MODEL,
-                    "prompt": prompt,
-                    "stream": True,
-                    "keep_alive": KEEP_ALIVE,
-                    "options": {"num_ctx": NUM_CTX},
-                },
-                timeout=300.0,
-            ) as response:
-                response.raise_for_status()
-                async for line in response.aiter_lines():
-                    if not line:
-                        continue
-                    chunk = json.loads(line)
-                    piece = chunk.get("response")
-                    if piece:
-                        text_parts.append(piece)
-                    if chunk.get("done"):
-                        final = chunk
-        except httpx.ConnectError:
-            error = "Ollama is not running. Start it with: ollama serve"
-        except Exception as e:  # noqa: BLE001 — surface any failure as tool text.
-            error = str(e)
+    try:
+        async with httpx.AsyncClient() as client:
+            try:
+                # Stream so per-phase timings and token counts are captured. The
+                # final streamed object carries the aggregate metrics.
+                async with client.stream(
+                    "POST",
+                    f"{OLLAMA_URL}/api/generate",
+                    json={
+                        "model": MODEL,
+                        "prompt": prompt,
+                        "stream": True,
+                        "keep_alive": KEEP_ALIVE,
+                        "options": {"num_ctx": NUM_CTX},
+                    },
+                    timeout=300.0,
+                ) as response:
+                    response.raise_for_status()
+                    async for line in response.aiter_lines():
+                        if not line:
+                            continue
+                        chunk = json.loads(line)
+                        piece = chunk.get("response")
+                        if piece:
+                            text_parts.append(piece)
+                        if chunk.get("done"):
+                            final = chunk
+            except httpx.ConnectError:
+                error = "Ollama is not running. Start it with: ollama serve"
+            except Exception as e:  # noqa: BLE001 — surface any failure as tool text.
+                error = str(e)
+    finally:
+        # finally, so a cancelled call (client hung up) still clears the pill.
+        _beacon(call_id, "end")
 
     ended_ms = int(time.time() * 1000)
     result_text = "".join(text_parts)

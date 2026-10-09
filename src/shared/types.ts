@@ -183,7 +183,15 @@ export interface HudState {
   unburnedToday: number
   /** Whether nudges are surfaced, recorded silently, or off. */
   nudgeMode: NudgeMode
+  /**
+   * Your own offloads in flight (shim /activity beacons), not the whole card:
+   * 'loading' while the coder model isn't resident yet (cold start),
+   * 'working' once it is. Drives the mini pill's meter.
+   */
+  offload: OffloadState
 }
+
+export type OffloadState = 'idle' | 'loading' | 'working'
 
 /** One row in the expanded panel's recent-task list. */
 export interface RecentEvent {

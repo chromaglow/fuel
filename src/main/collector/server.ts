@@ -1,6 +1,7 @@
 import { createServer, type Server } from 'node:http'
 import type { HookEvent, OffloadEvent } from '@shared/types'
 import { COLLECTOR_HOST, COLLECTOR_PORT, COLD_START_NS } from '@shared/constants'
+import { parseActivity, type ActivityBeacon } from './activity.js'
 
 /** The JSON the instrumented MCP shim POSTs to /ingest. */
 interface IngestBody {
@@ -115,12 +116,17 @@ export class Collector {
       action: 'allow',
       reasons: [],
     }),
+    // Start/end beacons for your own local_coding_task calls (see activity.ts).
+    private readonly onActivity: (b: ActivityBeacon) => void = () => {},
   ) {}
 
   start(): void {
     this.server = createServer((req, res) => {
       const route = req.url
-      if (req.method !== 'POST' || (route !== '/ingest' && route !== '/hook' && route !== '/decide')) {
+      if (
+        req.method !== 'POST' ||
+        (route !== '/ingest' && route !== '/hook' && route !== '/decide' && route !== '/activity')
+      ) {
         res.writeHead(404).end()
         return
       }
@@ -143,7 +149,10 @@ export class Collector {
             res.writeHead(200, { 'Content-Type': 'application/json' }).end(JSON.stringify(verdict))
             return
           }
-          if (route === '/ingest') {
+          if (route === '/activity') {
+            const beacon = parseActivity(parsed)
+            if (beacon) this.onActivity(beacon)
+          } else if (route === '/ingest') {
             const event = toEvent(parsed as IngestBody)
             if (event) this.onEvent(event)
           } else {

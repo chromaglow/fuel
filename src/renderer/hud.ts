@@ -31,6 +31,8 @@ const el = {
   status: $('status'),
   usd: $('usd'),
   miniUsd: $('mini-usd'),
+  mini: $('mini'),
+  miniTicks: [...$('mini-meter').children] as HTMLElement[],
   tokens: $('tokens'),
   tps: $('tps'),
   hw: $('hw'),
@@ -292,6 +294,7 @@ function render(s: HudState): void {
 
   el.usd.textContent = `≈ $${s.usdToday.toFixed(2)}`
   el.miniUsd.textContent = el.usd.textContent
+  renderMiniMeter(s)
   el.tokens.textContent = `${fmtTokens(s.today.evalTokens + s.today.promptTokens)} tok`
 
   if (s.tokPerSec != null) {
@@ -347,6 +350,19 @@ function render(s: HudState): void {
   }
 
   kick()
+}
+
+/**
+ * The mini pill's fuel ticks: lit only while one of *your* offloads is in
+ * flight (amber loading, green working), ten segments tracking GPU load.
+ * At least one tick stays lit while working, so a light moment never reads
+ * as idle. Updates once a second with the state push; no animation loop.
+ */
+function renderMiniMeter(s: HudState): void {
+  el.mini.dataset['offload'] = s.offload
+  const util = s.offload === 'idle' ? 0 : (s.gpu?.utilGpu ?? 0)
+  const lit = s.offload === 'idle' ? 0 : Math.max(1, Math.round(util / 10))
+  el.miniTicks.forEach((t, i) => t.classList.toggle('on', i < lit))
 }
 
 // ------------------------------------------------------------- interaction

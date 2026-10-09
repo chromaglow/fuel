@@ -6,6 +6,7 @@ import type {
   EvictionEvent,
   HudPhase,
   HudState,
+  OffloadState,
   Nudge,
   NudgeMode,
   OffloadEvent,
@@ -24,6 +25,7 @@ import {
   UTIL_HISTORY_LEN,
 } from '@shared/constants'
 import { Store } from './db/index.js'
+import { OffloadActivity } from './collector/activity.js'
 import {
   createHudWindow,
   isCursorOver,
@@ -145,6 +147,8 @@ let lastPingOk = false
 let interactive = false
 /** Rolled up to the mini pill: just the preserved-$ figure. Persisted. */
 let mini = false
+/** Your own local_coding_task calls in flight, from the shim's beacons. */
+const offloads = new OffloadActivity()
 let goalUsd = DEFAULT_DAILY_GOAL_USD
 
 /**
@@ -354,6 +358,17 @@ function derivePhase(
   return 'idle-evicted'
 }
 
+/**
+ * Your offloads only. Amber while the requested model isn't resident yet (a
+ * cold start in progress), green once it is.
+ */
+function offloadState(now: number): OffloadState {
+  const models = offloads.activeModels(now)
+  if (models.length === 0) return 'idle'
+  const resident = new Set(residents.map((r) => r.name))
+  return models.some((m) => resident.has(m)) ? 'working' : 'loading'
+}
+
 async function collect(): Promise<void> {
   const now = Date.now()
 
@@ -434,6 +449,7 @@ async function collect(): Promise<void> {
     goalUsd,
     unburnedToday: nudgeMode === 'off' ? 0 : store.todayNudgeCount(),
     nudgeMode,
+    offload: offloadState(now),
   }
 
   win?.webContents.send('fuel:state', state)
@@ -545,6 +561,7 @@ function startSensors(): void {
         record: (r, ev) => store.insertReceipt(toReceiptRecord(r, ev)),
         inGrace: (store.lastOkDelegationAt() ?? 0) > Date.now() - ENFORCE_GRACE_MS,
       }),
+    (b) => offloads.observe(b, Date.now()),
   )
   collector.start()
 

@@ -6,6 +6,28 @@ decided. Newest entry on top. This is the narrative companion to
 
 ---
 
+## 2026-10-09 — Fuel ticks on the mini pill
+
+**Asked for.** Ezra wanted the mini pill to show when local work is running, and how hard the
+GPU is working. He picked "fuel ticks" (ten segments along the bottom of the pill) from six
+mockups.
+
+**Whose work counts.** Only your own offloads. The Ollama log's busy flag can't tell your
+coder from WEYLD's DJ (~1,500 calls a day), and the shim's `/ingest` record only arrives
+after a call finishes. So the shim now also sends a live-only `/activity` beacon when a call
+starts and another when it ends (`end` is sent from a `finally` block, so a cancelled call
+still clears). `OffloadActivity` in `src/main/collector/activity.ts` tracks calls in flight
+and expires any whose `end` beacon was lost after 310 s, just over the shim's 300 s timeout.
+`HudState.offload` is `loading` while the requested model isn't resident yet and `working`
+once it is.
+
+**Display.** Lit ticks = GPU load / 10, with at least one lit while working. They're green
+while working and amber while loading, and the pill's edge picks up the same color. The meter
+updates with the existing 1 Hz state push; there's no animation loop, which keeps the
+no-perpetual-animation rule in `style.css`.
+
+---
+
 ## 2026-10-09 — Drag anywhere, remembered placement, mini pill
 
 **Asked for.** Ezra wanted to drag the HUD straight to any monitor instead of using the tray's
