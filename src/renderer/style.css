@@ -689,3 +689,54 @@ body.mini #mini:hover {
   opacity: 1;
   filter: none;
 }
+
+/* ---------- savings history (2026-10-14) ---------- */
+
+/* The chart button sits at the end of the VRAM legend line. */
+.vram-row { display: flex; align-items: center; gap: 6px; }
+.vram-row #vram-legend { flex: 1; min-width: 0; }
+#history-open { width: 16px; height: 16px; margin-top: 4px; flex: none; }
+#history-open svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+
+/* Covers the card, inside its frame; the gauge and panel stay underneath. */
+#history {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  padding: 12px 14px;
+  background: rgba(7, 11, 17, 0.96);
+  border-radius: 16px;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#history[hidden] { display: none; }
+#history .sub { margin: 4px 0 0; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #475569; }
+/* The card's own header rule stacks its children; this one is a row. */
+#history .hist-head { flex-direction: row; justify-content: space-between; align-items: center; padding-right: 0; }
+.hist-head .sub { margin: 0; color: var(--muted-bright); }
+
+.hist-bars { display: flex; align-items: flex-end; gap: 2px; height: 92px; padding-top: 4px; border-bottom: 1px solid rgba(148, 163, 184, 0.18); }
+.hist-bar { flex: 1; height: 100%; display: flex; align-items: flex-end; cursor: default; }
+.hist-bar i { display: block; width: 100%; min-height: 0; border-radius: 2px 2px 0 0; background: rgba(34, 211, 238, 0.45); transition: background 150ms ease; }
+.hist-bar:hover i { background: var(--accent-bright, #67e8f9); }
+.hist-bar.is-today i { background: var(--accent, #22d3ee); box-shadow: 0 0 8px rgba(34, 211, 238, 0.5); }
+.hist-bar.is-best i { background: #fbbf24; }
+.hist-axis { display: flex; justify-content: space-between; font-size: 8px; color: var(--muted); margin-top: -4px; }
+.hist-day { font-size: 10px; color: var(--muted-bright); min-height: 13px; }
+
+.hist-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.hist-tile { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 8px; }
+.hist-label { font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.hist-value { font-size: 16px; font-weight: 300; color: #f0f9ff; white-space: nowrap; }
+.hist-note { font-size: 9px; color: var(--muted); }
+.hist-tenants { display: flex; flex-direction: column; gap: 3px; font-size: 10px; }
+.hist-tenant { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; }
+.hist-foot { margin-top: 4px; }
+#history .tenant.coder { color: var(--t-coder); }
+#history .tenant.weyld-dj { color: var(--t-weyld-dj); }
+#history .tenant.weyld-embed { color: var(--t-weyld-embed); }
+#history .tenant.local { color: var(--t-local); }
+#history .tenant.unknown { color: var(--t-unknown); }

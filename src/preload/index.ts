@@ -7,6 +7,7 @@ import type {
   RecentEvent,
   ReceiptRecord,
 } from '../shared/types.js'
+import type { SavingsHistory } from '../shared/history.js'
 
 /** The entire surface the renderer is allowed to touch. */
 const api = {
@@ -55,6 +56,14 @@ const api = {
   },
   clearTruncation(): Promise<boolean> {
     return ipcRenderer.invoke('fuel:clear-truncation')
+  },
+  /** Savings by day for the last month, year to date, all time, by tenant. */
+  history(): Promise<SavingsHistory> {
+    return ipcRenderer.invoke('fuel:history')
+  },
+  /** The history panel opened or closed: main keeps the card rolled down while it's open. */
+  setHistoryOpen(on: boolean): void {
+    ipcRenderer.send('fuel:history-open', on)
   },
   quit(): void {
     ipcRenderer.send('fuel:quit')

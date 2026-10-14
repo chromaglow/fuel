@@ -22,6 +22,7 @@ import {
   renderPanelTenants,
   tenantClass,
 } from './panel.js'
+import { renderHistory, wireHistory } from './history.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T
@@ -444,7 +445,38 @@ document.body.classList.toggle(
   'mini',
   new URLSearchParams(location.search).get('size') === 'mini',
 )
-window.fuel.onMini((on) => document.body.classList.toggle('mini', on))
+// ---------------------------------------------------------------- history
+
+const historyEl = $('history')
+const historyBody = $('history-body')
+
+async function openHistory(): Promise<void> {
+  const h = await window.fuel.history()
+  historyBody.innerHTML = renderHistory(h)
+  wireHistory(historyBody, h)
+  historyEl.hidden = false
+  document.body.classList.add('history-open')
+  // Keeps the card rolled down while it's open, even with the cursor elsewhere.
+  window.fuel.setHistoryOpen(true)
+}
+
+function closeHistory(): void {
+  if (historyEl.hidden) return
+  historyEl.hidden = true
+  document.body.classList.remove('history-open')
+  window.fuel.setHistoryOpen(false)
+}
+
+$('history-open').addEventListener('click', () => void openHistory())
+$('history-close').addEventListener('click', closeHistory)
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeHistory()
+})
+
+window.fuel.onMini((on) => {
+  if (on) closeHistory()
+  document.body.classList.toggle('mini', on)
+})
 $('roll-up').addEventListener('click', () => window.fuel.setMini(true))
 $('roll-down').addEventListener('click', () => window.fuel.setMini(false))
 

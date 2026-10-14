@@ -373,6 +373,40 @@ export class Store {
     }))
   }
 
+  /**
+   * Every day's successful work by originator, all time: the history panel's
+   * source. Same buckets as todayTotalsByClient, grouped by local day
+   * (SQLite's 'localtime' is the process's zone, the same one localDay uses).
+   * Events are kept forever, so this reaches back to the first one.
+   */
+  totalsByDayAndClient(): Array<{
+    day: string
+    client: string | null
+    tasks: number
+    promptTokens: number
+    evalTokens: number
+  }> {
+    const rows = this.db
+      .prepare(
+        `SELECT strftime('%Y-%m-%d', started_at / 1000, 'unixepoch', 'localtime') AS day,
+                client,
+                COUNT(*)                        AS tasks,
+                COALESCE(SUM(prompt_tokens), 0) AS promptTokens,
+                COALESCE(SUM(eval_tokens), 0)   AS evalTokens
+         FROM events
+         WHERE status = 'ok'
+         GROUP BY day, client`,
+      )
+      .all() as Array<Record<string, number | string | null>>
+    return rows.map((r) => ({
+      day: String(r.day),
+      client: r.client != null ? String(r.client) : null,
+      tasks: Number(r.tasks ?? 0),
+      promptTokens: Number(r.promptTokens ?? 0),
+      evalTokens: Number(r.evalTokens ?? 0),
+    }))
+  }
+
   /** Recent GPU-utilisation samples, oldest first — seeds the sparkline on launch. */
   recentUtil(limit: number): number[] {
     const rows = this.db

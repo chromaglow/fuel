@@ -27,7 +27,8 @@ import {
   RUNAWAY_MIN_UTIL,
   UTIL_HISTORY_LEN,
 } from '@shared/constants'
-import { Store } from './db/index.js'
+import { localDay, Store } from './db/index.js'
+import { summarizeHistory, type SavingsHistory } from '../shared/history.js'
 import { localActivity, OffloadActivity } from './collector/activity.js'
 import {
   createHudWindow,
@@ -324,6 +325,8 @@ let expanded = false
 let hovered = false
 let hoverTimer: NodeJS.Timeout | null = null
 let outsideTicks = 0
+/** The history panel is open: the card stays rolled down (still click-through) until it's closed. */
+let historyOpen = false
 
 /** Ticks outside the window before collapsing — stops edge flicker. */
 const COLLAPSE_GRACE_TICKS = 2
@@ -377,7 +380,7 @@ function startHoverWatch(): void {
       setExpanded(true)
     } else if (hovered && ++outsideTicks >= COLLAPSE_GRACE_TICKS) {
       setHovered(false)
-      setExpanded(false)
+      if (!historyOpen) setExpanded(false)
     }
   }, HOVER_POLL_MS)
 }
@@ -505,15 +508,35 @@ async function collect(): Promise<void> {
  * unattributed bucket, priced at the default rate and labelled as such rather
  * than hidden. Sorted by dollars, unattributed last.
  */
+/** The tenant behind a stored event's `client`: shim clients are this PC; NULL is unattributed. */
+function tenantOfClient(client: string | null): Tenant | null {
+  if (client === 'claude-code' || client === 'claude-desktop') return tenantForIp('127.0.0.1') ?? { id: 'local', label: 'this PC' }
+  if (client != null) return tenantById(client) ?? { id: client, label: client }
+  return null
+}
+
+/**
+ * The history panel's numbers. Each (day, tenant) is priced with the same
+ * per-tenant rates as the headline figure, so today's bar matches the ring.
+ */
+function savingsHistory(): SavingsHistory {
+  const priced = store.totalsByDayAndClient().map((r) => {
+    const tenant = tenantOfClient(r.client)
+    return {
+      day: r.day,
+      tenant,
+      usd: usdForTenant(tenant?.id ?? null, r.promptTokens, r.evalTokens),
+      tokens: r.promptTokens + r.evalTokens,
+      tasks: r.tasks,
+    }
+  })
+  return summarizeHistory(priced, localDay())
+}
+
 function tenantTotals(): TenantTotals[] {
   const merged = new Map<string | null, TenantTotals>()
   for (const r of store.todayTotalsByClient()) {
-    let tenant: Tenant | null = null
-    if (r.client === 'claude-code' || r.client === 'claude-desktop') {
-      tenant = tenantForIp('127.0.0.1') ?? { id: 'local', label: 'this PC' }
-    } else if (r.client != null) {
-      tenant = tenantById(r.client) ?? { id: r.client, label: r.client }
-    }
+    const tenant = tenantOfClient(r.client)
     const key = tenant?.id ?? null
     const cur = merged.get(key) ?? {
       tenant,
@@ -678,6 +701,14 @@ function registerIpc(): void {
   )
 
   ipcMain.on('fuel:set-mini', (_e, on: unknown) => setMini(on === true))
+
+  ipcMain.handle('fuel:history', (): SavingsHistory => savingsHistory())
+
+  ipcMain.on('fuel:history-open', (_e, on: unknown) => {
+    historyOpen = on === true
+    // Closed with the cursor elsewhere: roll the card back up now.
+    if (!historyOpen && win && !isCursorOver(win)) setExpanded(false)
+  })
 
   ipcMain.on('fuel:quit', () => app.quit())
 }
