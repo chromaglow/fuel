@@ -250,6 +250,35 @@ action (`/auto` = heal mode).
   real contention event the detector logged. Restart old sessions after changing
   `MODEL`.
 
+## Runaway guard (2026-10-14)
+
+**What happened:** WEYLD's DJ (on `qwen3.5-abliterated:9b`) sent two song-pick calls
+that never stopped. Each ran to subwave's default 8,000-token output cap: 91 s and
+113 s, with the 4080 at ~95% / ~240 W, and the desktop stalled. The DJ's 45 s
+deadline didn't stop them, because the ai-sdk-ollama transport ignores the abort,
+and Ollama has no per-request cancel.
+
+**The guard** (`sensors/runaway.ts` + `sensors/runnerKill.ts`): the tailer emits
+`task` start/end from llama-server's `launch_slot_` / `release` lines (key
+`slot:task`), and `RunawayGuard` times each one. A task past `RUNAWAY_LIMIT_MS`
+(60 s; env `FUEL_RUNAWAY_LIMIT_MS`, 0 = off) gets the busiest `llama-server.exe`
+child of the live `ollama.exe` killed. The kill only happens if that runner shows
+≥ `RUNAWAY_MIN_UTIL` (20%) on Windows' per-process GPU Engine counters; otherwise
+it's logged and left alone. Result: a desktop notification plus a line in
+`%LOCALAPPDATA%\fuel\runaway.log`. The killed request's GIN line lands as an error
+with the caller's IP, as usual.
+
+**Verified live:** a runner at 85% was killed 8 s in. The request returned 500
+about 9 s later (Ollama is slow to notice the dead runner, but the GPU frees at the
+kill). The next request reloaded in 5.6 s, with no orphan runner. Caveat: a long
+`local_coding_task` can exceed 60 s; raise the limit if that bites.
+
+**WEYLD side (Ezra applies):** `POST /api/settings`
+`{"llm":{"maxOutputTokens":2048,"pickerAgent":false}}`. Picks needed ≤ 999 output
+tokens over 4.5 h, and the agentic picker never made a tool call on qwen3.5
+(3 failures, breaker tripped), so the stateless picker was choosing the songs
+anyway.
+
 ## Per-tenant economics (layer 3, 2026-08-18)
 
 Each tenant's tokens are priced at **its own counterfactual Claude model**
