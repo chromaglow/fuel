@@ -1,6 +1,7 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, type Tray } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Notification, type Tray } from 'electron'
 import { join } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { appendFileSync } from 'node:fs'
 import type {
   CatchStats,
   EvictionEvent,
@@ -21,6 +22,9 @@ import {
   POLL_GPU_MS,
   POLL_TAGS_MS,
   RECENT_EVENT_LIMIT,
+  RUNAWAY_CHECK_MS,
+  RUNAWAY_LIMIT_MS,
+  RUNAWAY_MIN_UTIL,
   UTIL_HISTORY_LEN,
 } from '@shared/constants'
 import { Store } from './db/index.js'
@@ -39,6 +43,8 @@ import { GpuMonitor } from './sensors/nvidiaSmi.js'
 import { pingOllama, readResidents, readTags } from './sensors/ollamaApi.js'
 import { OllamaLogTailer } from './sensors/ollamaLog.js'
 import { EvictionDetector } from './sensors/evictions.js'
+import { RunawayGuard, type OverdueTask } from './sensors/runaway.js'
+import { killBusiestRunner } from './sensors/runnerKill.js'
 import { inferModel, loadTenants, tenantById, tenantForIp, tenantForModel } from './tenants.js'
 import { Collector } from './collector/server.js'
 import { Reconciler } from './collector/reconcile.js'
@@ -69,6 +75,7 @@ let reconciler: Reconciler | null = null
 let classifier: NudgeClassifier | null = null
 let valve: Valve | null = null
 let watchdog: Watchdog | null = null
+let runawayTimer: NodeJS.Timeout | null = null
 
 /**
  * Nudge surfacing. Defaults to 'shadow': nudges are recorded and reviewable in
@@ -105,6 +112,49 @@ let installedModels: string[] = []
  */
 let residents: ResidentModel[] = []
 const evictions = new EvictionDetector()
+
+// ------------------------------------------------------------ runaway guard
+
+const runaway = new RunawayGuard(RUNAWAY_LIMIT_MS)
+let stoppingRunaway = false
+
+/**
+ * Kill the runner serving an overdue task, then say so — a desktop
+ * notification, the console, and a line in runaway.log. The request that was
+ * running fails; its GIN line (with the caller's IP) lands in the event log
+ * as an error like any other, so attribution needs nothing extra here.
+ */
+async function stopRunaway(over: OverdueTask[]): Promise<void> {
+  if (stoppingRunaway) return
+  stoppingRunaway = true
+  const secs = Math.round(Math.max(...over.map((o) => o.ms)) / 1000)
+  let line: string
+  try {
+    const r = await killBusiestRunner(RUNAWAY_MIN_UTIL)
+    if (r.action === 'killed') {
+      line = `stopped a runaway request after ${secs}s (runner pid ${r.pid}, GPU ${r.util}%)`
+      new Notification({
+        title: 'fuel stopped a runaway AI request',
+        body: `It had been running ${secs}s. The model reloads on the next request.`,
+      }).show()
+    } else if (r.action === 'skip') {
+      line = `task over ${secs}s but runner pid ${r.pid} was only ${r.util}% busy; left alone`
+    } else {
+      line = `task over ${secs}s but no Ollama runner found; nothing to stop`
+    }
+  } catch (err) {
+    line = `task over ${secs}s; stopping the runner failed: ${(err as Error).message}`
+  } finally {
+    stoppingRunaway = false
+  }
+  console.log(`[fuel] runaway: ${line}`)
+  try {
+    appendFileSync(join(dataDir(), 'runaway.log'), `${new Date().toISOString()} ${line}
+`)
+  } catch {
+    // Logging is best-effort.
+  }
+}
 
 /**
  * Observed keep-alive per model. A request moves `expires_at` forward; the
@@ -565,11 +615,20 @@ function startSensors(): void {
   tailer.on('event', (e) => reconciler?.onLog(attributeLogEvent(e)))
   tailer.on('busy', (b) => {
     logBusy = b
+    if (!b) runaway.idle()
   })
+  tailer.on('task', (t) => (t.kind === 'start' ? runaway.start(t.key, Date.now()) : runaway.end(t.key)))
   tailer.on('error', () => {
     // Log parsing is best-effort; /api/ps remains authoritative for state.
   })
   tailer.start()
+
+  if (RUNAWAY_LIMIT_MS > 0) {
+    runawayTimer = setInterval(() => {
+      const over = runaway.overdue(Date.now())
+      if (over.length > 0) void stopRunaway(over)
+    }, RUNAWAY_CHECK_MS)
+  }
 
   tick = setInterval(() => void collect(), POLL_GPU_MS)
   void collect()
@@ -727,6 +786,7 @@ if (!app.requestSingleInstanceLock()) {
   app.on('before-quit', () => {
     if (tick) clearInterval(tick)
     if (tagsTimer) clearInterval(tagsTimer)
+    if (runawayTimer) clearInterval(runawayTimer)
     if (hoverTimer) clearInterval(hoverTimer)
     tailer?.stop()
     gpuMon?.stop()

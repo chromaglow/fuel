@@ -3,6 +3,7 @@ import { createReadStream, existsSync, statSync, watch, type FSWatcher } from 'n
 import { join } from 'node:path'
 import type { OffloadEvent } from '@shared/types'
 import { COLD_START_NS } from '@shared/constants'
+import { parseSlotTask, type SlotTask } from './runaway.js'
 
 export function defaultLogPath(): string {
   const local = process.env.LOCALAPPDATA ?? ''
@@ -73,6 +74,8 @@ const WORK_ROUTES = new Set(['/api/generate', '/api/chat', '/v1/chat/completions
 export interface OllamaLogEvents {
   event: [OffloadEvent]
   busy: [boolean]
+  /** A llama-server task started or finished — feeds the runaway guard. */
+  task: [SlotTask]
   error: [Error]
 }
 
@@ -171,6 +174,11 @@ export class OllamaLogTailer extends EventEmitter<OllamaLogEvents> {
 
   private handleLine(line: string): void {
     if (!line) return
+
+    // Task start/end lines also carry facts the branches below claim (the
+    // release line is RELEASE), so emit without returning.
+    const task = parseSlotTask(line)
+    if (task) this.emit('task', task)
 
     const loaded = LOADED.exec(line)
     if (loaded) {

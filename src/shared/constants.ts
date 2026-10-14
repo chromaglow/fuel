@@ -116,3 +116,17 @@ export const DEFAULT_MODEL = 'qwen2.5-coder:7b'
 
 /** Hard cap on a buffered generation request body before we give up rewriting. */
 export const PROXY_MAX_BODY_BYTES = 64 * 1024 * 1024
+
+// ---- Runaway guard (sensors/runaway.ts) ----
+
+/**
+ * One llama-server task running longer than this gets its runner killed. A
+ * healthy call here is under ~35 s even at a 2,048-token cap (~70 tok/s); the
+ * WEYLD DJ's runaways ran 91 s and 113 s to an 8,000-token cap on 2026-10-14
+ * and stalled the desktop. FUEL_RUNAWAY_LIMIT_MS overrides; 0 disables.
+ */
+export const RUNAWAY_LIMIT_MS = Number(process.env.FUEL_RUNAWAY_LIMIT_MS ?? 60_000)
+/** How often the guard looks for overdue tasks. */
+export const RUNAWAY_CHECK_MS = 5000
+/** A runner must be at least this busy on the GPU (%) to be killed — guards against a stale log. */
+export const RUNAWAY_MIN_UTIL = 20
