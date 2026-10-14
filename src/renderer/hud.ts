@@ -8,7 +8,7 @@ import type {
   ResidentModel,
 } from '../shared/types.js'
 import { TOK_PER_SEC_REDLINE, UTIL_HISTORY_LEN } from '../shared/constants.js'
-import { GAUGE_SIZE, lerp } from './theme.js'
+import { CY, GAUGE_SIZE, lerp, R_RING, W_RING } from './theme.js'
 import { drawRing } from './gauges/ring.js'
 import { drawArc } from './gauges/arc.js'
 import { drawSparkline } from './gauges/sparkline.js'
@@ -25,6 +25,42 @@ import {
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T
+
+/** The dollar figure's design size, and the smallest it may shrink to. */
+const USD_FONT_MAX = 31
+const USD_FONT_MIN = 14
+/** Clearance between the figure and the ring's inner edge, px. */
+const USD_RING_GAP = 7
+/** What the figure was last fitted for, so the fit runs only when the text (or visibility) changes. */
+let usdFitted = ''
+
+/**
+ * Keep the dollar figure inside the budget ring. The text grows through the
+ * day ($1.20 → $11.67 → $123.45), and at the design's 31px it ran over the
+ * ring. The room is the ring's inner chord at the figure's own height, so it
+ * steps the font down a pixel at a time until the figure clears it.
+ */
+function fitUsd(): void {
+  const usd = el.usd
+  // Hidden (rolled up): nothing to measure. Fit when it shows again.
+  if (usd.offsetParent === null) {
+    usdFitted = ''
+    return
+  }
+  if (usdFitted === usd.textContent) return
+  const wrap = $('gauge-wrap').getBoundingClientRect()
+  const inner = R_RING - W_RING / 2 - USD_RING_GAP
+  let size = USD_FONT_MAX
+  usd.style.fontSize = `${size}px`
+  for (; size > USD_FONT_MIN; size--) {
+    const r = usd.getBoundingClientRect()
+    const dy = r.top + r.height / 2 - (wrap.top + (CY * wrap.height) / GAUGE_SIZE)
+    const room = 2 * Math.sqrt(Math.max(0, inner * inner - dy * dy))
+    if (usd.scrollWidth <= room) break
+    usd.style.fontSize = `${size - 1}px`
+  }
+  usdFitted = usd.textContent ?? ''
+}
 
 const el = {
   model: $('model'),
@@ -293,6 +329,7 @@ function render(s: HudState): void {
   renderVram(s)
 
   el.usd.textContent = `≈ $${s.usdToday.toFixed(2)}`
+  fitUsd()
   el.miniUsd.textContent = el.usd.textContent
   renderMiniMeter(s)
   el.tokens.textContent = `${fmtTokens(s.today.evalTokens + s.today.promptTokens)} tok`

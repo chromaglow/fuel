@@ -12,15 +12,17 @@ export const COLORS = {
 /**
  * The budget ring laps. Each full circuit of the daily goal resets the sweep
  * and advances one step along this sequence, so the colour alone says how many
- * times over the goal today has gone: red is the first lap, blue the fifth
- * and beyond. Stored as [r,g,b] so glow and track tints can be derived.
+ * times over the goal today has gone: rainbow order, red the first lap and
+ * purple the sixth and beyond. Stored as [r,g,b] so glow and track tints can
+ * be derived.
  */
 export const LAP_COLORS: ReadonlyArray<readonly [number, number, number]> = [
   [248, 113, 113], // red
-  [251, 191, 36], //  yellow
   [251, 146, 60], //  orange
+  [251, 191, 36], //  yellow
   [74, 222, 128], //  green
   [34, 211, 238], //  blue
+  [192, 132, 252], // purple
 ]
 
 export function lapColor(lap: number): readonly [number, number, number] {

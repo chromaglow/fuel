@@ -26,7 +26,7 @@ export interface RingOptions {
  * daily goal. This is the headline metric, so it gets the glow.
  *
  * One ring, lapping. Reaching the goal empties the sweep and starts again in
- * the next lap colour (red → yellow → orange → green → blue), and the lap just
+ * the next lap colour (red → orange → yellow → green → blue → purple), and the lap just
  * completed stays on the track as a faint tint so a rollover is visible even
  * mid-lap. No second ring, no pinning at 100%.
  */

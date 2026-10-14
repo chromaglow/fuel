@@ -180,7 +180,7 @@ models evicting each other) was unrepresentable — the HUD showed the same
   one row per resident + reloads vs evictions split + contention log; recent tasks
   show who. Tenant colours are CSS vars `--t-<id>` in `style.css`.
 - **Ring laps** (same day, per Ezra): one ring; each full lap of the daily goal
-  empties and advances red → yellow → orange → green → blue (`theme.ts LAP_COLORS`),
+  empties and advances red → orange → yellow → green → blue → purple (`theme.ts LAP_COLORS`),
   previous lap tinting the track. The purple overflow ring is gone.
 - Measured on first run: coder 5.6 + DJ 5.9 resident, but nvidia-smi 14.1/16 GB
   used — the desktop itself holds ~2.6 GB, so real headroom is ~2 GB, not 4.5.
