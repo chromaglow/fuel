@@ -2,7 +2,7 @@
 
 The one document to read before picking this project back up. For the full design see [SPEC.md](./SPEC.md); for the pitch see [README.md](./README.md); for the blow-by-blow of how the Toll Booth got built see [CHANGELOG.md](./CHANGELOG.md). This file is the *state of play* plus every trap already hit, so nobody re-derives them.
 
-Last updated: 2026-07-23 (Toll Booth built — M1–M6 of the router; **awaiting activation**, see "Activating the Toll Booth" below).
+Last updated: 2026-10-14 (the gauge: dollar fit, savings history, lap tiers, lively effects and the Fx Studio; see "The gauge, 2026-10-14" below). Earlier: 2026-07-23, the Toll Booth.
 
 > **Resuming to make it work?** Read this file top-to-bottom, then jump to **[Activating the Toll Booth](#activating-the-toll-booth)** — that's the one thing left to do, and it's a guided ~3-step process (restart on the new build → register one PreToolUse hook → run in `observe`, then flip to `guard`).
 
@@ -20,6 +20,7 @@ A frameless, translucent, always-on-top Windows HUD that shows — in real time 
 
 | Milestone | State | What it delivered |
 |---|---|---|
+| **The gauge (2026-10-14)** | ✅ done, live | Dollar figure fitted inside the ring; rainbow laps with purple; savings history panel (30 days, year, all time, by tenant); lap tiers past $12 (Aurora → Plasma) with ripples, names, milestone confetti and a New record badge; lively effects from the first dollar (flames, sparkles, white-hot head, explosions, lasers, rolling number); the **Fx Studio** window for every dial; card opacity 0.9. **124 tests.** On branch `ezra/shared-qwen35-model`, not yet merged to `main`. |
 | **HUD placement + mini pill (2026-10-09)** | ✅ done, live | Hover-to-grab drag (no Interactive mode needed); top-right anchor remembered per monitor (`placement.ts`); mini pill with fuel ticks lit by any local processing (`collector/activity.ts` + shim `/activity` beacons). **103 tests.** |
 | **Multi-tenant (L1–L3, 2026-08-18)** | ✅ done, live | tenants registry; `residents[]` + VRAM budget bar; eviction detector; CPU-split + keep-alive alarms; `OLLAMA_KEEP_ALIVE=1h`; per-tenant $ at counterfactual rates; lapping ring. **82 tests.** |
 | **M1 — Sensor** | ✅ done | 1 Hz GPU + model-residency telemetry, `server.log` tailer, SQLite persistence, live HUD |
@@ -86,7 +87,7 @@ Built but **inert** — it changes nothing until these steps. Lead the user thro
 npm install            # zero native deps — node:sqlite is built into Electron's Node
 npm run build          # electron-vite build → out/
 npx electron .         # or: npm run dev  (HMR)
-npm test               # 72 tests, node --test, no deps
+npm test               # 124 tests, node --test, no deps
 npm run typecheck      # tsc --noEmit
 node scripts/inspect.mjs        # dump what's been captured to the DB
 node scripts/make-icon.mjs      # regenerate tray/app icons (build/*.png)
@@ -250,6 +251,24 @@ action (`/auto` = heal mode).
   real contention event the detector logged. Restart old sessions after changing
   `MODEL`.
 
+## The gauge, 2026-10-14
+
+Asked for in an ATTC session; each step was checked in a browser copy of the built HUD (a stub `window.fuel`, served on localhost) and then in fuel itself, restarted on the new build. Commits `af8d7ef`, `803b620`, `4182024`.
+
+- **Dollar fit** (`hud.ts fitUsd`): the figure starts at 31px and steps down until it clears the ring's inner chord at its own height ($11.67 → 27px, $123.45 → 24px). Keyed by the text's shape (digits as 0s), so the rolling odometer only re-fits when it gains a digit.
+- **Laps** (`theme.ts LAP_COLORS`): red → orange → yellow → green → blue → purple, one lap per daily goal ($2).
+- **Savings history** (`src/shared/history.ts`, `src/renderer/history.ts`, `fuel:history`): the chart button on the VRAM legend line opens a panel over the card: 30 daily bars (hover for the day; today blue, best day gold), last 30 days, year to date, all time, best day, and by tenant. `Store.totalsByDayAndClient()` groups `events` by local day; each (day, tenant) is priced with `usdForTenant`, so today's bar matches the ring. `fuel:history-open` keeps the card rolled down while the panel is open.
+- **Tiers** (`src/renderer/tiers.ts`, `gauges/ring.ts`): by lap, 0-based. Solid for laps 0–5; Aurora from 6 ($12), Shimmer 8, Gold 10, Prism 15, Plasma 25. The moments: a ripple each lap, a burst and the tier's name the first time a day reaches a tier (`localStorage fuel.tierSeen`), confetti and "$25 DAY" at $10/25/50/100/250/500/1000 (`fuel.milestoneSeen`), and a New record badge when today passes `bestBeforeToday`. Nothing replays on the first state after launch.
+- **Lively effects**, from the first dollar: flames behind the dial (heat = 0.2 + 0.065 × laps), twinkles, a white-hot head on every lap, explosions and lasers on laps, and the dollar figure that rolls (an eased `anim.usd`), pops and floats the "+$" added.
+- **Fx Studio** (`src/renderer/fx-config.ts`, `studio.html/.ts/.css`, `fuel:open-studio`): the ✦ on the VRAM line opens a normal window with a live preview gauge (a sandbox with its own dollars and buttons for a lap, a tier or a milestone) and 42 dials from `FX_SCHEMA`, plus presets (Calm, Lively, Party, Laser show, Inferno). Settings live in `localStorage fuel.fx`. The studio and the HUD are both `file://` pages in the same session, so they share it, and the HUD follows a change through the `storage` event; no IPC. `normalizeFx` clamps anything stored to the schema. Calm (`enabled: false`) keeps the tiers and moments, and drops the lively effects.
+- **Frames:** the loop is still event-driven. Moving tiers and lively effects keep to `fpsWorking` (30) or `fpsIdle` (10), bursts get 30, and there are none when offline, rolled up, hidden or with reduced motion.
+
+Traps found on the way:
+- **A steady effect counted as a burst draws every frame** (60 fps). `ringBurstAlive()` (ripples, confetti, lasers) is the only thing that lifts the cap.
+- **The HUD's buttons need real size.** A 16px ✦ was "impossible to press" (it worked when clicked by script). The VRAM-line buttons are 24px with an outline.
+- **Inspecting the live HUD:** `electron.cmd . --remote-debugging-port=9333`, then a CDP `Runtime.evaluate` on the page from `/json/list`. Restart without the flag afterwards: the port lets any local process drive the app.
+- **Starting it by hand:** from `C:\dev\GitHub\fuel`, run `npx electron .` (the dot matters). Run elsewhere it opens an empty Electron "Error" window.
+
 ## Runaway guard (2026-10-14)
 
 **What happened:** WEYLD's DJ (on `qwen3.5-abliterated:9b`) sent two song-pick calls
@@ -321,6 +340,9 @@ src/main/                    Electron main: sensors/, collector/, nudge/, db/, w
   nudge/                     classify (old M4 nudge) · Toll Booth: signals (M1), sorter (M2), gate (M4)
   proxy/                     M5 valve: rewrite (pure ctx/keep_alive forcing), watchdog (bypass FSM), server (Valve HTTP proxy)
 src/renderer/                HUD: gauges/, hud.ts (event-driven render loop), panel (incl. toll-booth tile+feed), theme
+  tiers.ts · fx-config.ts    the ring's tier ladder · every effect dial, its schema, presets and normalizeFx
+  history.ts                 the savings history panel (data from src/shared/history.ts via fuel:history)
+  studio.html/.ts/.css       the Fx Studio window (second electron-vite renderer input)
 src/shared/                  types (incl. ReceiptRecord, CatchStats) + constants shared across processes
 integrations/ollama_mcp.py   the fuel-instrumented MCP shim (installed by install.mjs)
 integrations/hook.cjs        PostToolUse nudge hook (old M4) — .cjs, not .js (see trap #12)
