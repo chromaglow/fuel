@@ -12,7 +12,17 @@
     "192.168.4.144": {
       "id": "weyld-dj",
       "label": "WEYLD DJ",
-      "model": "llama3.1:8b"
+      "model": "huihui_ai/qwen3.5-abliterated:9b"
+    },
+    "10.10.10.2": {
+      "id": "weyld-dj",
+      "label": "WEYLD DJ (direct link)",
+      "model": "huihui_ai/qwen3.5-abliterated:9b"
+    },
+    "192.168.4.30": {
+      "id": "rachel",
+      "label": "Rachel (5T phone)",
+      "model": "huihui_ai/qwen3.5-abliterated:9b"
     }
   },
   "byModel": {
@@ -35,6 +45,10 @@
     "qwen3:8b": {
       "id": "rachel",
       "label": "Rachel (MOCR)"
+    },
+    "huihui_ai/qwen3.5-abliterated:9b": {
+      "id": "shared",
+      "label": "shared (DJ/Rachel/coder)"
     }
   }
 }

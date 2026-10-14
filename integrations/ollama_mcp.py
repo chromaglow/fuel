@@ -26,7 +26,9 @@ normally regardless. Telemetry must never be able to break the tool.
 
 Environment:
   FUEL_CLIENT     attribution tag, e.g. "claude-code" or "claude-desktop"
+  FUEL_MODEL      Ollama model tag (default qwen2.5-coder:7b)
   FUEL_NUM_CTX    override the requested context window
+  FUEL_THINK      "true" to let thinking models reason (default false: sends think:false)
   FUEL_KEEP_ALIVE how long Ollama keeps the model in VRAM after a call (default 30m)
   FUEL_COLLECTOR  override the collector URL (default http://127.0.0.1:47113)
   OLLAMA_URL      override the Ollama endpoint
@@ -57,6 +59,9 @@ NUM_CTX = int(os.environ.get("FUEL_NUM_CTX", "16384"))
 # Keep the model resident between calls; Ollama's 5m default means a ~9s cold
 # start after every quiet spell.
 KEEP_ALIVE = os.environ.get("FUEL_KEEP_ALIVE", "30m")
+# Qwen3/3.5-style models think by default; reasoning only slows mechanical tasks.
+# Sent as top-level `think` (ignored by models without a thinking mode).
+THINK = os.environ.get("FUEL_THINK", "false").lower() in ("1", "true", "yes")
 
 # Spool next to fuel's database so it drains on next launch.
 SPOOL_PATH = os.path.join(
@@ -74,7 +79,7 @@ async def list_tools():
             description=(
                 "PREFER THIS over writing the code yourself whenever the work is "
                 "mechanical and cheaply verifiable — it runs FREE on the user's local "
-                "GPU (Qwen2.5-Coder-14B via Ollama) and consumes no cloud tokens. "
+                f"GPU ({MODEL} via Ollama) and consumes no cloud tokens. "
                 "Standing policy: before writing repetitive or boilerplate code by hand, "
                 "delegate it here. Good fits: generating similar files from a clear "
                 "pattern or schema, writing straightforward tests from an explicit spec, "
@@ -278,6 +283,7 @@ async def call_tool(name: str, arguments: dict):
                         "prompt": prompt,
                         "stream": True,
                         "keep_alive": KEEP_ALIVE,
+                        "think": THINK,
                         "options": {"num_ctx": NUM_CTX},
                     },
                     timeout=300.0,
