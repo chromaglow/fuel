@@ -38,6 +38,8 @@ export interface SavingsHistory {
   allTimeUsd: number
   /** The best single day ever, or null before any work. */
   best: HistoryDay | null
+  /** The best day before today: what today has to beat for a new record. */
+  bestBeforeToday: HistoryDay | null
   /** The first day with any work: how far back "all time" reaches. */
   since: string | null
   /** By tenant: the last month and the year, largest first, unattributed last. */
@@ -79,7 +81,9 @@ export function summarizeHistory(rows: PricedDay[], today: string, days = 30): S
   }
 
   const all = [...perDay.values()]
-  const best = all.reduce<HistoryDay | null>((b, d) => (d.usd > 0 && (!b || d.usd > b.usd) ? d : b), null)
+  const bestOf = (list: HistoryDay[]) => list.reduce<HistoryDay | null>((b, d) => (d.usd > 0 && (!b || d.usd > b.usd) ? d : b), null)
+  const best = bestOf(all)
+  const bestBeforeToday = bestOf(all.filter((d) => d.day < today))
   const byTenant = [...perTenant.values()]
     .filter((t) => t.usdMonth > 0 || t.usdYear > 0)
     .sort((a, b) => {
@@ -94,6 +98,7 @@ export function summarizeHistory(rows: PricedDay[], today: string, days = 30): S
     yearUsd: all.filter((d) => d.day >= yearFrom).reduce((a, d) => a + d.usd, 0),
     allTimeUsd,
     best,
+    bestBeforeToday,
     since,
     byTenant,
   }

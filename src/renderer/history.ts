@@ -62,7 +62,22 @@ export function renderHistory(h: SavingsHistory): string {
     </div>
     <div class="sub">by tenant · last 30 days</div>
     <div class="hist-tenants">${tenants || '<div class="hist-note">nothing offloaded yet</div>'}</div>
-    <div class="hist-note hist-foot">Estimates: what these tokens would have cost on Claude, at each tenant's rate.</div>`
+    <div class="hist-note hist-foot">Estimates: what these tokens would have cost on Claude, at each tenant's rate.</div>
+    <div class="hist-effects"><span class="hist-label">gauge effects</span><button class="fold hist-fx" data-fx="lively" type="button">lively</button><button class="fold hist-fx" data-fx="calm" type="button">calm</button></div>`
+}
+
+/** The Lively / Calm switch in the panel's footer. */
+export function wireEffects(root: HTMLElement, lively: boolean, set: (on: boolean) => void): void {
+  const buttons = [...root.querySelectorAll<HTMLButtonElement>('.hist-fx')]
+  const show = (on: boolean): void => buttons.forEach((b) => b.classList.toggle('is-on', (b.dataset.fx === 'lively') === on))
+  show(lively)
+  for (const b of buttons) {
+    b.addEventListener('click', () => {
+      const on = b.dataset.fx === 'lively'
+      set(on)
+      show(on)
+    })
+  }
 }
 
 /** Hovering a bar shows its day on the line under the chart; leaving shows today again. */

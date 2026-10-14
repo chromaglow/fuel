@@ -38,6 +38,10 @@ test('month, year, all time, best day and since', () => {
   assert.equal(h.yearUsd, 12)
   assert.equal(h.allTimeUsd, 17)
   assert.deepEqual([h.best?.day, h.best?.usd], ['2026-10-02', 8])
+  assert.deepEqual([h.bestBeforeToday?.day, h.bestBeforeToday?.usd], ['2026-10-02', 8])
+  // Today beating it: best is today, the record to beat is still the old one.
+  const today = summarizeHistory([row('2026-10-02', pc, 8), row('2026-10-14', pc, 9)], '2026-10-14')
+  assert.deepEqual([today.best?.day, today.bestBeforeToday?.day], ['2026-10-14', '2026-10-02'])
   assert.equal(h.since, '2025-12-30')
 })
 

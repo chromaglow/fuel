@@ -663,6 +663,41 @@ function startSensors(): void {
   void refreshTags()
 }
 
+// ------------------------------------------------------------ fx studio
+
+let studio: BrowserWindow | null = null
+
+/**
+ * The Fx Studio: a normal window (framed, focusable, not click-through) with
+ * every dial on the gauge's effects. It shares the HUD's localStorage, so its
+ * changes reach the gauge through the 'storage' event; no IPC needed for that.
+ */
+function openStudio(): void {
+  if (studio && !studio.isDestroyed()) {
+    studio.show()
+    studio.focus()
+    return
+  }
+  studio = new BrowserWindow({
+    width: 1080,
+    height: 780,
+    minWidth: 820,
+    minHeight: 600,
+    title: 'fuel · Fx Studio',
+    backgroundColor: '#070b11',
+    autoHideMenuBar: true,
+    show: false,
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+  })
+  const devUrl = process.env['ELECTRON_RENDERER_URL']
+  if (devUrl) void studio.loadURL(`${devUrl}/studio.html`)
+  else void studio.loadFile(join(import.meta.dirname, '../renderer/studio.html'))
+  studio.once('ready-to-show', () => studio?.show())
+  studio.on('closed', () => {
+    studio = null
+  })
+}
+
 // ------------------------------------------------------------------- ipc
 
 function registerIpc(): void {
@@ -703,6 +738,8 @@ function registerIpc(): void {
   ipcMain.on('fuel:set-mini', (_e, on: unknown) => setMini(on === true))
 
   ipcMain.handle('fuel:history', (): SavingsHistory => savingsHistory())
+
+  ipcMain.on('fuel:open-studio', () => openStudio())
 
   ipcMain.on('fuel:history-open', (_e, on: unknown) => {
     historyOpen = on === true

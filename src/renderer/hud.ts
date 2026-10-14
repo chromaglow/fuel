@@ -8,8 +8,10 @@ import type {
   ResidentModel,
 } from '../shared/types.js'
 import { TOK_PER_SEC_REDLINE, UTIL_HISTORY_LEN } from '../shared/constants.js'
-import { CY, GAUGE_SIZE, lerp, R_RING, W_RING } from './theme.js'
-import { drawRing } from './gauges/ring.js'
+import { CY, GAUGE_SIZE, lapColor, lerp, R_RING, W_RING } from './theme.js'
+import { drawRing, drawRingBack, drawRingFront, drawRingParticles, ringBurstAlive, ringConfetti, ringExplode, ringFxAlive, ringLasers, ringLively, ringRipple, ringSparkle, setRingConfig, setRingFx, stepRingFx } from './gauges/ring.js'
+import { FX_KEY, loadFx, saveFx, type FxConfig } from './fx-config.js'
+import { ambientFps, tierForLap, tierMoves, tierRank } from './tiers.js'
 import { drawArc } from './gauges/arc.js'
 import { drawSparkline } from './gauges/sparkline.js'
 import {
@@ -22,10 +24,14 @@ import {
   renderPanelTenants,
   tenantClass,
 } from './panel.js'
-import { renderHistory, wireHistory } from './history.js'
+import { renderHistory, wireEffects, wireHistory } from './history.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
   document.getElementById(id) as T
+
+/** The Fx Studio's settings (see applyFx below); loaded first, since startup code reads them. */
+let fx: FxConfig = loadFx()
+let lively = fx.enabled
 
 /** The dollar figure's design size, and the smallest it may shrink to. */
 const USD_FONT_MAX = 31
@@ -48,7 +54,9 @@ function fitUsd(): void {
     usdFitted = ''
     return
   }
-  if (usdFitted === usd.textContent) return
+  // Keyed by the figure's shape (digits as 0s): a rolling odometer only re-fits when it gains a digit.
+  const shape = (usd.textContent ?? '').replace(/\d/g, '0')
+  if (usdFitted === shape) return
   const wrap = $('gauge-wrap').getBoundingClientRect()
   const inner = R_RING - W_RING / 2 - USD_RING_GAP
   let size = USD_FONT_MAX
@@ -60,7 +68,7 @@ function fitUsd(): void {
     if (usd.scrollWidth <= room) break
     usd.style.fontSize = `${size - 1}px`
   }
-  usdFitted = usd.textContent ?? ''
+  usdFitted = shape
 }
 
 const el = {
@@ -97,6 +105,9 @@ let state: HudState | null = null
 const anim = {
   ring: 0,
   ringTarget: 0,
+  /** The dollar figure rolls up to its target like an odometer. */
+  usd: 0,
+  usdTarget: 0,
   arc: 0,
   arcTarget: 0,
   intensity: 0,
@@ -120,15 +131,17 @@ function sizeCanvas(): void {
   ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0)
 }
 
-function draw(): void {
+function draw(now = performance.now()): void {
   ctx2d.clearRect(0, 0, GAUGE_SIZE, GAUGE_SIZE)
+  writeUsd()
+  drawRingBack(ctx2d, anim.intensity)
 
   drawArc(ctx2d, {
     tokPerSec: anim.arc,
     redline: TOK_PER_SEC_REDLINE,
     intensity: anim.intensity,
   })
-  drawRing(ctx2d, { progress: anim.ring, intensity: anim.intensity })
+  drawRing(ctx2d, { progress: anim.ring, intensity: anim.intensity, t: now, still: reduceMotion })
 
   if (state) {
     drawSparkline(ctx2d, {
@@ -137,6 +150,16 @@ function draw(): void {
       intensity: anim.intensity,
     })
   }
+  drawRingParticles(ctx2d, anim.intensity)
+  drawRingFront(ctx2d, anim.intensity)
+}
+
+/** The dollar figure as it stands mid-roll. */
+function writeUsd(): void {
+  const text = `≈ $${anim.usd.toFixed(2)}`
+  if (el.usd.textContent === text) return
+  el.usd.textContent = text
+  fitUsd()
 }
 
 /**
@@ -145,15 +168,29 @@ function draw(): void {
  * HUD does no work at all, which is what keeps idle CPU near zero — a monitor
  * that taxes the thing it monitors is self-defeating.
  */
-const TAU = { ring: 260, arc: 180, intensity: 320 }
-const EPS = { ring: 0.0005, arc: 0.05, intensity: 0.004 }
+const TAU = { ring: 260, arc: 180, intensity: 320, usd: 420 }
+const EPS = { ring: 0.0005, arc: 0.05, intensity: 0.004, usd: 0.004 }
 
 let raf = 0
 let lastFrame = 0
+/** When the moving tiers last drew, so they keep to ambientFps. */
+let lastAmbient = 0
+
+/**
+ * The moving tiers (Aurora and up) and the moments (ripples, sparks) need
+ * frames even when nothing is easing. Only while the card is visible, rolled
+ * down or up but on screen, not dark, and motion isn't reduced.
+ */
+function needsAmbient(): boolean {
+  if (reduceMotion || document.hidden || !state || document.body.classList.contains('mini')) return false
+  if (ambientFps(anim.intensity, fx.global.fpsWorking, fx.global.fpsIdle) === 0) return false
+  return tierMoves(tierForLap(Math.floor(Math.max(0, anim.ring))).id) || ringFxAlive() || ringLively()
+}
 
 function settled(): boolean {
   return (
     Math.abs(anim.ring - anim.ringTarget) < EPS.ring &&
+    Math.abs(anim.usd - anim.usdTarget) < EPS.usd &&
     Math.abs(anim.arc - anim.arcTarget) < EPS.arc &&
     Math.abs(anim.intensity - anim.intensityTarget) < EPS.intensity
   )
@@ -161,6 +198,7 @@ function settled(): boolean {
 
 function snap(): void {
   anim.ring = anim.ringTarget
+  anim.usd = anim.usdTarget
   anim.arc = anim.arcTarget
   anim.intensity = anim.intensityTarget
 }
@@ -170,18 +208,27 @@ function frame(now: number): void {
   lastFrame = now
 
   anim.ring = lerp(anim.ring, anim.ringTarget, 1 - Math.exp(-dt / TAU.ring))
+  anim.usd = lerp(anim.usd, anim.usdTarget, 1 - Math.exp(-dt / TAU.usd))
   anim.arc = lerp(anim.arc, anim.arcTarget, 1 - Math.exp(-dt / TAU.arc))
   anim.intensity = lerp(
     anim.intensity,
     anim.intensityTarget,
     1 - Math.exp(-dt / TAU.intensity),
   )
+  stepRingFx(dt, anim.intensity, reduceMotion)
 
-  draw()
+  const easing = !settled()
+  if (!easing) snap()
+  // Easing draws every frame; a burst (ripple, confetti) gets up to 30 fps; the
+  // steady fire, glints and moving tiers keep to the ambient pace (30 working, 10 idle).
+  const fps = ringBurstAlive() ? Math.max(30, fx.global.fpsWorking) : ambientFps(anim.intensity, fx.global.fpsWorking, fx.global.fpsIdle)
+  if (easing || (fps > 0 && now - lastAmbient >= 1000 / fps - 2)) {
+    draw(now)
+    lastAmbient = now
+  }
 
-  if (settled()) {
-    snap()
-    draw()
+  if (!easing && !needsAmbient()) {
+    draw(now)
     raf = 0
     lastFrame = 0
     return
@@ -195,12 +242,227 @@ function kick(): void {
     draw()
     return
   }
-  if (settled()) {
+  if (settled() && !needsAmbient()) {
     draw()
     return
   }
   if (!raf) raf = requestAnimationFrame(frame)
 }
+
+// A hidden window stops the ambient loop; showing it again restarts it.
+document.addEventListener('visibilitychange', () => kick())
+
+// ---------------------------------------------------------------- moments
+
+/** Today's highest tier, kept across restarts so a relaunch doesn't replay its burst. */
+const TIER_KEY = 'fuel.tierSeen'
+let lapSeen: number | null = null
+let daySeen = ''
+let tierSeen = 0
+/** The best day before today; beating it lights the record badge. Null until the history loads. */
+let recordToBeat: number | null = null
+let recordShown = false
+let tierLabelTimer: ReturnType<typeof setTimeout> | null = null
+
+function loadTierSeen(day: string): number | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(TIER_KEY) ?? 'null') as { day?: string; rank?: number } | null
+    return v && v.day === day && typeof v.rank === 'number' ? v.rank : null
+  } catch {
+    return null
+  }
+}
+
+function saveTierSeen(day: string, rank: number): void {
+  try {
+    localStorage.setItem(TIER_KEY, JSON.stringify({ day, rank }))
+  } catch {
+    // Storage refused: the burst may replay after a restart, nothing worse.
+  }
+}
+
+/** The tier's name, in its colour, where "budget preserved" sits, for about three seconds. */
+function flashTierName(name: string, color: readonly [number, number, number]): void {
+  if (!fx.names.on) return
+  const label = $('usd-label')
+  label.textContent = name
+  label.style.color = `rgb(${color.join(', ')})`
+  label.classList.add('is-tier')
+  if (tierLabelTimer) clearTimeout(tierLabelTimer)
+  tierLabelTimer = setTimeout(() => {
+    label.classList.remove('is-tier')
+    label.textContent = 'budget preserved'
+    label.style.color = ''
+  }, 3200)
+}
+
+async function loadRecord(): Promise<void> {
+  try {
+    const h = await window.fuel.history()
+    recordToBeat = h.bestBeforeToday?.usd ?? 0
+  } catch {
+    recordToBeat = null
+  }
+}
+
+/**
+ * Lap completed: a ripple. A higher tier than any reached today: a bigger
+ * burst and its name. Today passing the best day ever: a burst and the
+ * New record badge. Nothing fires on the first state after launch, so a
+ * restart doesn't replay the day.
+ */
+function moments(s: HudState): void {
+  const day = s.today.day
+  const lap = s.goalUsd > 0 ? Math.floor(s.usdToday / s.goalUsd) : 0
+  const tier = tierForLap(lap)
+  const rank = tierRank(tier.id)
+
+  if (day !== daySeen) {
+    // Launch or midnight: start the day's bookkeeping quietly.
+    daySeen = day
+    lapSeen = lap
+    tierSeen = loadTierSeen(day) ?? rank
+    saveTierSeen(day, tierSeen)
+    milestoneSeen = loadMilestone(day) ?? (MILESTONES.filter((m) => s.usdToday >= m).pop() ?? 0)
+    saveMilestone(day, milestoneSeen)
+    recordShown = false
+    recordToBeat = null
+    void loadRecord()
+  } else {
+    if (lapSeen !== null && lap > lapSeen) {
+      const c = tier.id === 'solid' ? lapColor(lap) : tier.color
+      ringRipple(1, c)
+      if (lively) {
+        ringSparkle()
+        if (fx.explosions.onLap) ringExplode(c)
+        if (fx.lasers.onLap) ringLasers(c)
+        if (fx.confetti.onLap) ringConfetti(CONFETTI)
+      }
+    }
+    const milestone = MILESTONES.filter((m) => s.usdToday >= m).pop() ?? 0
+    if (milestone > milestoneSeen) {
+      milestoneSeen = milestone
+      saveMilestone(day, milestone)
+      if (lively) {
+        if (fx.confetti.onMilestone) ringConfetti(CONFETTI)
+        if (fx.explosions.onMilestone) ringExplode([253, 224, 71], 1.8)
+      }
+      ringRipple(2, [251, 191, 36])
+      flashTierName(`$${milestone.toLocaleString('en-US')} DAY`, [253, 224, 71])
+    }
+    if (rank > tierSeen) {
+      tierSeen = rank
+      saveTierSeen(day, rank)
+      ringRipple(2, tier.color)
+      if (tier.name) flashTierName(tier.name.toUpperCase(), tier.color)
+    }
+    lapSeen = lap
+  }
+
+  const record = recordToBeat !== null && recordToBeat > 0 && s.usdToday > recordToBeat
+  if (record && !recordShown && lapSeen !== null) {
+    // Only celebrate a crossing seen live; at launch the badge just shows.
+    if (s.usdToday - recordToBeat! < s.goalUsd) ringRipple(2, [251, 191, 36])
+  }
+  recordShown = record
+  $('record').hidden = !record
+
+  // The flames' heat: a little from the first cent, roaring by about $25 at the $2 goal.
+  setRingFx(s.usdToday <= 0 || s.goalUsd <= 0 ? 0 : Math.min(1, 0.2 + 0.065 * (s.usdToday / s.goalUsd)), lively)
+}
+
+// ---------------------------------------------------------- lively number
+
+/** Dollar milestones that throw confetti the first time a day reaches them. */
+const MILESTONES = [10, 25, 50, 100, 250, 500, 1000]
+const CONFETTI: ReadonlyArray<readonly [number, number, number]> = [
+  [248, 113, 113], [251, 146, 60], [251, 191, 36], [74, 222, 128], [34, 211, 238], [192, 132, 252], [255, 255, 255],
+]
+const MILESTONE_KEY = 'fuel.milestoneSeen'
+let milestoneSeen = 0
+let usdStarted = false
+let popTimer: ReturnType<typeof setTimeout> | null = null
+
+function loadMilestone(day: string): number | null {
+  try {
+    const v = JSON.parse(localStorage.getItem(MILESTONE_KEY) ?? 'null') as { day?: string; usd?: number } | null
+    return v && v.day === day && typeof v.usd === 'number' ? v.usd : null
+  } catch {
+    return null
+  }
+}
+
+function saveMilestone(day: string, usd: number): void {
+  try {
+    localStorage.setItem(MILESTONE_KEY, JSON.stringify({ day, usd }))
+  } catch {
+    // Storage refused: a milestone may replay after a restart.
+  }
+}
+
+/**
+ * New dollars: the figure rolls up to them like an odometer, pops for a
+ * moment, and the amount just added floats up off it. The first reading after
+ * launch (and every reading in Calm or reduced motion) just shows the number.
+ */
+function rollUsd(target: number): void {
+  const gained = target - anim.usdTarget
+  anim.usdTarget = target
+  if (!usdStarted || !lively || !fx.number.roll || reduceMotion || gained < 0) {
+    anim.usd = target
+    usdStarted = true
+    writeUsd()
+    return
+  }
+  if (gained < 0.005) return
+  if (fx.number.pop) {
+    el.usd.classList.remove('is-pop')
+    void el.usd.offsetWidth // restart the animation
+    el.usd.classList.add('is-pop')
+    if (popTimer) clearTimeout(popTimer)
+    popTimer = setTimeout(() => el.usd.classList.remove('is-pop'), 600)
+  }
+  if (fx.number.delta && gained >= 0.01) floatDelta(gained)
+}
+
+function floatDelta(gained: number): void {
+  const d = document.createElement('div')
+  d.className = 'usd-delta'
+  d.textContent = `+$${gained.toFixed(2)}`
+  $('center').appendChild(d)
+  setTimeout(() => d.remove(), 1500)
+}
+
+// ---------------------------------------------------------- lively / calm
+
+/**
+ * The Fx Studio's settings (fx-config.ts). Calm is the master switch; the
+ * studio window writes the rest, and a 'storage' event brings each change
+ * here at once.
+ */
+function applyFx(): void {
+  lively = fx.enabled
+  setRingConfig(fx)
+  TAU.usd = 420 / fx.number.rollSpeed
+  // A more solid card: the desktop showing through the text was distracting.
+  document.documentElement.style.setProperty('--panel', `rgba(7, 11, 17, ${fx.card.opacity})`)
+  if (state) setRingFx(state.usdToday <= 0 ? 0 : Math.min(1, 0.2 + 0.065 * (state.usdToday / Math.max(0.01, state.goalUsd))), lively)
+  kick()
+}
+
+window.addEventListener('storage', (e) => {
+  if (e.key !== FX_KEY && e.key !== null) return
+  fx = loadFx()
+  applyFx()
+})
+
+export function setLively(on: boolean): void {
+  fx = { ...fx, enabled: on }
+  saveFx(fx)
+  applyFx()
+}
+
+export const isLively = (): boolean => lively
 
 // ------------------------------------------------------------------ text
 
@@ -329,9 +591,8 @@ function render(s: HudState): void {
 
   renderVram(s)
 
-  el.usd.textContent = `≈ $${s.usdToday.toFixed(2)}`
-  fitUsd()
-  el.miniUsd.textContent = el.usd.textContent
+  rollUsd(s.usdToday)
+  el.miniUsd.textContent = `≈ $${s.usdToday.toFixed(2)}`
   renderMiniMeter(s)
   el.tokens.textContent = `${fmtTokens(s.today.evalTokens + s.today.promptTokens)} tok`
 
@@ -376,6 +637,7 @@ function render(s: HudState): void {
   }
 
   anim.ringTarget = s.goalUsd > 0 ? s.usdToday / s.goalUsd : 0
+  moments(s)
   // The arc reflects the most recent measured rate while work is happening,
   // and decays to rest otherwise. M1/M2 have no token-level stream, so this
   // is last-completed throughput, not a live per-token reading.
@@ -454,6 +716,7 @@ async function openHistory(): Promise<void> {
   const h = await window.fuel.history()
   historyBody.innerHTML = renderHistory(h)
   wireHistory(historyBody, h)
+  wireEffects(historyBody, isLively(), setLively)
   historyEl.hidden = false
   document.body.classList.add('history-open')
   // Keeps the card rolled down while it's open, even with the cursor elsewhere.
@@ -468,6 +731,7 @@ function closeHistory(): void {
 }
 
 $('history-open').addEventListener('click', () => void openHistory())
+$('studio-open').addEventListener('click', () => window.fuel.openStudio())
 $('history-close').addEventListener('click', closeHistory)
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') closeHistory()
@@ -476,6 +740,8 @@ document.addEventListener('keydown', (e) => {
 window.fuel.onMini((on) => {
   if (on) closeHistory()
   document.body.classList.toggle('mini', on)
+  // Rolled down again: the moving tiers pick up where they left off.
+  kick()
 })
 $('roll-up').addEventListener('click', () => window.fuel.setMini(true))
 $('roll-down').addEventListener('click', () => window.fuel.setMini(false))
@@ -491,3 +757,6 @@ window.addEventListener('resize', () => {
 })
 window.fuel.onState(render)
 draw()
+
+// The studio's settings, applied once everything above exists.
+applyFx()

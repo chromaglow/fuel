@@ -1,0 +1,86 @@
+/* fuel Fx Studio (2026-10-14): a normal window, not the HUD, so it paints its own background. */
+
+:root {
+  --bg: #070b11;
+  --panel: #0d131c;
+  --line: rgba(148, 163, 184, 0.16);
+  --text: #e0f2fe;
+  --muted: #64748b;
+  --accent: #22d3ee;
+  --accent-soft: rgba(34, 211, 238, 0.14);
+}
+
+* { box-sizing: border-box; margin: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+#studio { display: grid; grid-template-columns: 340px 1fr; height: 100%; }
+
+#stage { padding: 20px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+.stage-head h1 { font-size: 16px; font-weight: 600; letter-spacing: 0.04em; }
+.muted { color: var(--muted); }
+.small { font-size: 10px; line-height: 1.5; }
+
+#preview-card { background: rgba(7, 11, 17, 0.9); border: 1px solid rgba(34, 211, 238, 0.16); border-radius: 16px; padding: 14px; display: flex; justify-content: center; }
+#preview-wrap { position: relative; width: 240px; height: 240px; }
+#preview { display: block; width: 240px; height: 240px; }
+#p-center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; transform: translateY(-14px); pointer-events: none; }
+#p-usd { font-size: 27px; font-weight: 300; color: #f0f9ff; text-shadow: 0 0 20px rgba(34, 211, 238, 0.35); white-space: nowrap; }
+#p-label { font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); margin-top: 5px; }
+#p-label.is-tier { letter-spacing: 0.24em; font-weight: 600; }
+
+/* The same pop and float as the gauge's own number. */
+#p-usd.is-pop { animation: usd-pop 520ms cubic-bezier(.2, .9, .3, 1.3); }
+@keyframes usd-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.08); text-shadow: 0 0 26px rgba(253, 224, 71, 0.75), 0 0 8px rgba(255, 255, 255, 0.6); }
+  100% { transform: scale(1); }
+}
+.p-delta {
+  position: absolute; top: calc(50% - 44px); left: 0; right: 0; text-align: center;
+  font-size: 11px; font-weight: 500; color: #fde68a; text-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+  animation: usd-delta 1.4s ease-out forwards; pointer-events: none;
+}
+@keyframes usd-delta {
+  0% { opacity: 0; transform: translateY(6px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.05); }
+  100% { opacity: 0; transform: translateY(-22px) scale(1); }
+}
+
+.sim { display: flex; flex-direction: column; gap: 10px; }
+.sim-row { display: grid; grid-template-columns: 90px 1fr 60px; align-items: center; gap: 8px; }
+.sim-row output { text-align: right; }
+.sim-buttons { display: flex; flex-wrap: wrap; gap: 6px; }
+
+button { font: inherit; color: var(--text); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button.ghost { background: transparent; }
+.seg { display: inline-flex; gap: 0; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 6px 0 0 6px; }
+.seg button:last-child { border-radius: 0 6px 6px 0; }
+.seg button.is-on, .presets button.is-on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+
+#controls { overflow-y: auto; padding: 20px 24px 40px; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 16px; position: sticky; top: -20px; background: var(--bg); padding: 12px 0; z-index: 2; }
+.master { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.presets { display: flex; flex-wrap: wrap; gap: 6px; }
+
+#sections { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.fx-section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 8px; }
+.fx-section h2 { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); }
+.fx-section .hint { color: var(--muted); font-size: 10px; }
+.fx-field { display: grid; grid-template-columns: 1fr 140px 44px; align-items: center; gap: 8px; }
+.fx-field output { text-align: right; color: var(--muted); }
+.fx-field.is-off { opacity: 0.4; }
+
+input[type=range] { width: 100%; accent-color: var(--accent); }
+input[type=checkbox] { accent-color: var(--accent); }
+input[type=color] { width: 44px; height: 22px; padding: 0; border: 1px solid var(--line); background: none; cursor: pointer; }
+select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }

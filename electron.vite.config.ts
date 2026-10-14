@@ -31,7 +31,8 @@ export default defineConfig({
     resolve: { alias: { '@shared': shared } },
     build: {
       rollupOptions: {
-        input: resolve('src/renderer/index.html'),
+        // The HUD, and the Fx Studio window it opens.
+        input: { index: resolve('src/renderer/index.html'), studio: resolve('src/renderer/studio.html') },
       },
     },
   },

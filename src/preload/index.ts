@@ -61,6 +61,10 @@ const api = {
   history(): Promise<SavingsHistory> {
     return ipcRenderer.invoke('fuel:history')
   },
+  /** Open (or bring forward) the Fx Studio window. */
+  openStudio(): void {
+    ipcRenderer.send('fuel:open-studio')
+  },
   /** The history panel opened or closed: main keeps the card rolled down while it's open. */
   setHistoryOpen(on: boolean): void {
     ipcRenderer.send('fuel:history-open', on)

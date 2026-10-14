@@ -11,7 +11,7 @@
   --text: #e0f2fe;
   --muted: #64748b;
   --muted-bright: #94a3b8;
-  --panel: rgba(7, 11, 17, 0.74);
+  --panel: rgba(7, 11, 17, 0.9);
   --edge: rgba(34, 211, 238, 0.16);
 
   /* Tenant colours. The GPU is shared; each resident model is painted in its
@@ -693,10 +693,11 @@ body.mini #mini:hover {
 /* ---------- savings history (2026-10-14) ---------- */
 
 /* The chart button sits at the end of the VRAM legend line. */
-.vram-row { display: flex; align-items: center; gap: 6px; }
+.vram-row { display: flex; align-items: center; gap: 5px; }
 .vram-row #vram-legend { flex: 1; min-width: 0; }
-#history-open { width: 16px; height: 16px; margin-top: 4px; flex: none; }
-#history-open svg { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
+/* Easy targets: 24px each, with the icons drawn large inside them. */
+#history-open, #studio-open { width: 24px; height: 24px; margin-top: 3px; flex: none; display: inline-flex; align-items: center; justify-content: center; border: 1px solid rgba(148, 163, 184, 0.18); }
+#history-open svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; }
 
 /* Covers the card, inside its frame; the gauge and panel stay underneath. */
 #history {
@@ -740,3 +741,60 @@ body.mini #mini:hover {
 #history .tenant.weyld-embed { color: var(--t-weyld-embed); }
 #history .tenant.local { color: var(--t-local); }
 #history .tenant.unknown { color: var(--t-unknown); }
+
+/* ---------- ring tiers and moments (2026-10-14) ---------- */
+
+/* A new tier's name takes the label's place for a moment, in the tier's colour. */
+#usd-label.is-tier { letter-spacing: 0.24em; font-weight: 600; animation: tier-name 3.2s ease both; }
+@keyframes tier-name { 0% { opacity: 0; } 12% { opacity: 1; } 80% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { #usd-label.is-tier { animation: none; } }
+
+/* Today beat the best day so far. */
+#record {
+  margin-top: 6px;
+  padding: 1px 6px;
+  font-size: 7.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: #fbbf24;
+  border: 1px solid rgba(251, 191, 36, 0.55);
+  border-radius: 6px;
+}
+#record[hidden] { display: none; }
+
+/* ---------- lively number (2026-10-14, round 2) ---------- */
+
+/* New dollars: the figure pops, and the amount added floats up off it. */
+#usd.is-pop { animation: usd-pop 520ms cubic-bezier(.2, .9, .3, 1.3); }
+@keyframes usd-pop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.08); text-shadow: 0 0 26px rgba(253, 224, 71, 0.75), 0 0 8px rgba(255, 255, 255, 0.6); }
+  100% { transform: scale(1); }
+}
+.usd-delta {
+  position: absolute;
+  top: calc(50% - 46px);
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 500;
+  color: #fde68a;
+  text-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
+  animation: usd-delta 1.4s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes usd-delta {
+  0% { opacity: 0; transform: translateY(6px) scale(0.9); }
+  15% { opacity: 1; transform: translateY(0) scale(1.05); }
+  100% { opacity: 0; transform: translateY(-22px) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) { #usd.is-pop, .usd-delta { animation: none; } }
+
+/* The Lively / Calm switch in the history panel. */
+.hist-effects { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
+.hist-effects .hist-label { margin-right: auto; }
+.hist-fx { width: auto; padding: 2px 8px; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.hist-fx.is-on { color: var(--accent-bright); background: rgba(34, 211, 238, 0.14); }
+
+#studio-open { font-size: 15px; }
