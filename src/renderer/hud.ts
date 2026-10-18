@@ -24,6 +24,7 @@ import {
   renderPanelTenants,
   tenantClass,
 } from './panel.js'
+import { residentVramMb } from '../shared/vram.js'
 import { renderHistory, wireEffects, wireHistory } from './history.js'
 
 const $ = <T extends HTMLElement>(id: string): T =>
@@ -477,8 +478,6 @@ function fmtCountdown(sec: number): string {
   return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`
 }
 
-const GB = 1024 ** 3
-
 const PHASE_LABEL: Record<HudState['phase'], string> = {
   offline: 'ollama offline',
   'idle-evicted': 'nothing loaded',
@@ -517,17 +516,27 @@ function nextEvictIn(rs: ResidentModel[], now: number): { name: string; sec: num
  * The VRAM budget bar: total card memory, segmented by resident model in its
  * tenant's colour, then whatever else the driver reports in use, then free.
  * This is the one picture that shows "do these two fit" without arithmetic.
+ *
+ * Used/total come from nvidia-smi. /api/ps size_vram under-reports (it misses
+ * most of the KV cache), so it only names the residents and weights the split
+ * between them; see residentVramMb.
  */
 function renderVram(s: HudState): void {
   const total = s.gpu?.memTotalMb ?? 0
   if (!total) {
+    // No nvidia-smi reading: nothing to measure, but /api/ps still says who is loaded.
     el.vramBar.innerHTML = ''
-    el.vramLegend.textContent = ''
+    el.vramBar.className = ''
+    el.vramLegend.innerHTML =
+      s.residents
+        .map((r) => `<span class="lg ${tenantClass(r.tenant)}">${r.tenant?.label ?? r.name}</span>`)
+        .join('') + '<span class="lg free">vram n/a</span>'
     return
   }
   const usedMb = s.gpu?.memUsedMb ?? 0
-  const residentMb = s.residents.reduce((a, r) => a + r.sizeVram / 1024 ** 2, 0)
-  const otherMb = Math.max(0, usedMb - residentMb)
+  const shares = residentVramMb(s.residents.map((r) => r.sizeVram), usedMb) ?? []
+  const mbOf = (i: number): number => shares[i] ?? 0
+  const otherMb = s.residents.length ? 0 : Math.max(0, usedMb)
   const freeMb = Math.max(0, total - usedMb)
   // "Tight" = less than one small model's worth of headroom left; the next
   // load will evict someone.
@@ -547,21 +556,21 @@ function renderVram(s: HudState): void {
   el.vramBar.className = [tight ? 'tight' : '', anySplit ? 'split' : ''].join(' ').trim()
   el.vramBar.innerHTML =
     s.residents
-      .map((r) =>
+      .map((r, i) =>
         seg(
           `${tenantClass(r.tenant)}${split(r) ? ' cpu-split' : ''}`,
-          r.sizeVram / 1024 ** 2,
-          `${r.name} · ${(r.sizeVram / GB).toFixed(1)} GB` +
+          mbOf(i),
+          `${r.name} · ${(mbOf(i) / 1024).toFixed(1)} GB` +
             (split(r) ? ` in VRAM · ${split(r)}% ON CPU` : ''),
         ),
       )
       .join('') + seg('other', otherMb, `other (driver, desktop) · ${(otherMb / 1024).toFixed(1)} GB`)
 
-  const legend = s.residents.map((r) => {
+  const legend = s.residents.map((r, i) => {
     const pct = split(r)
     return (
       `<span class="lg ${tenantClass(r.tenant)}${pct ? ' cpu-split' : ''}">` +
-      `${r.tenant?.label ?? r.name} ${(r.sizeVram / GB).toFixed(1)}${pct ? ` · ${pct}% cpu ⚠` : ''}</span>`
+      `${r.tenant?.label ?? r.name} ${(mbOf(i) / 1024).toFixed(1)}${pct ? ` · ${pct}% cpu ⚠` : ''}</span>`
     )
   })
   legend.push(

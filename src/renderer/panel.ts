@@ -17,6 +17,7 @@ function row(k: string, v: string, cls = ''): string {
 export function tenantClass(t: Tenant | null): string {
   return t ? t.id.replace(/[^a-z0-9-]/gi, '-') : 'unknown'
 }
+import { residentVramMb } from '../shared/vram.js'
 
 function fmtGb(bytes: number): string {
   return `${(bytes / 1024 ** 3).toFixed(1)} GB`
@@ -67,10 +68,18 @@ export function renderPanelRows(el: HTMLElement, s: HudState): void {
   if (s.residents.length === 0) {
     parts.push(row('resident', 'nothing loaded'))
   }
-  for (const r of s.residents) {
+  // VRAM per resident is nvidia-smi's used total split by /api/ps weight
+  // (size_vram alone under-reports the KV cache); null without nvidia-smi.
+  const shares = residentVramMb(s.residents.map((r) => r.sizeVram), g?.memUsedMb)
+  for (const [i, r] of s.residents.entries()) {
     const cpuPct =
       r.sizeTotal > r.sizeVram * 1.01 ? Math.round((1 - r.sizeVram / r.sizeTotal) * 100) : 0
-    const bits = [cpuPct ? `${fmtGb(r.sizeVram)} vram · ${cpuPct}% on CPU ⚠` : fmtGb(r.sizeVram)]
+    const mb = shares?.[i]
+    const bits = cpuPct
+      ? [`${fmtGb(r.sizeVram)} vram · ${cpuPct}% on CPU ⚠`]
+      : mb != null
+        ? [fmtGb(mb * 1024 ** 2)]
+        : []
     if (r.contextLength != null) {
       bits.push(`ctx ${fmtTokens(r.contextLength)}${r.contextLength <= 4096 ? ' ⚠' : ''}`)
     }
