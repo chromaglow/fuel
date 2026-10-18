@@ -37,7 +37,7 @@ export const COLLECTOR_HOST = '127.0.0.1'
  * 11.08 GB resident and leaves 3.2 GB free, versus 32,768 which leaves only
  * 0.57 GB — one browser tab from spilling into system RAM.
  */
-export const DEFAULT_NUM_CTX = 16384
+export const DEFAULT_NUM_CTX = 32768
 
 /**
  * How long a client-agnostic log event waits to be claimed by a richer MCP
@@ -103,7 +103,7 @@ export const PROXY_FAIL_THRESHOLD = 3
  * keep_alive the valve pins when a client didn't set one, so the model doesn't
  * evict after Ollama's default 5 min and pay the ~33 s cold start next request.
  */
-export const PROXY_KEEP_ALIVE = '30m'
+export const PROXY_KEEP_ALIVE = '-1m' // never unload; Ollama rejects the string '-1' (no unit)
 
 /**
  * Model the valve pre-warms on request. 7b, not 14b: the 14b (~11 GB) cannot
@@ -112,7 +112,7 @@ export const PROXY_KEEP_ALIVE = '30m'
  * desktop freezes on 2026-08-18. 7b (~5 GB) + DJ co-reside. Keep in sync with
  * integrations/ollama_mcp.py MODEL.
  */
-export const DEFAULT_MODEL = 'qwen2.5-coder:7b'
+export const DEFAULT_MODEL = 'gemma4:12b'
 
 /** Hard cap on a buffered generation request body before we give up rewriting. */
 export const PROXY_MAX_BODY_BYTES = 64 * 1024 * 1024
