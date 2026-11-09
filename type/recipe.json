@@ -1,0 +1,250 @@
+{
+  "name": "fuel",
+  "client": "fuel",
+  "scheme": "Dark",
+  "frosting": {
+    "colors": {}
+  },
+  "fontdant": {
+    "mode": "reading",
+    "faces": {
+      "display": "segoe-ui",
+      "text": "segoe-ui",
+      "mono": "cascadia-code"
+    },
+    "fit": {
+      "display": false,
+      "text": false,
+      "mono": false
+    },
+    "dials": {
+      "steps": {
+        "xs": "0.75rem",
+        "sm": "0.8125rem",
+        "md": "0.875rem",
+        "lg": "0.9375rem",
+        "h-sm": "1rem",
+        "h-md": "1.125rem",
+        "h-lg": "1.25rem",
+        "h-xl": "1.6875rem",
+        "display": "1.9375rem"
+      }
+    },
+    "fonts": {
+      "segoe-ui": {
+        "id": "segoe-ui",
+        "family": "Segoe UI",
+        "shelf": "custom",
+        "slots": [
+          "text",
+          "display"
+        ],
+        "lucky": false,
+        "category": "sans",
+        "fallback": "sans",
+        "note": "MacroAgent's interface face: Windows' system font, used by its installed name (MacroAgent runs on Windows only). Nothing is shipped.",
+        "provider": "system (Windows)",
+        "variable": false,
+        "files": [],
+        "weights": {
+          "kind": "static",
+          "available": [
+            300,
+            400,
+            600,
+            700
+          ]
+        },
+        "italics": {
+          "kind": "none",
+          "available": []
+        },
+        "axes": {},
+        "metrics": {
+          "names": {
+            "family": "Segoe UI",
+            "fullName": "Segoe UI",
+            "postscriptName": "SegoeUI"
+          },
+          "unitsPerEm": 2048,
+          "hhea": {
+            "ascent": 2210,
+            "descent": -514,
+            "lineGap": 0
+          },
+          "typo": {
+            "ascent": 1491,
+            "descent": -431,
+            "lineGap": 269
+          },
+          "win": {
+            "ascent": 2210,
+            "descent": 514
+          },
+          "useTypoMetrics": false,
+          "metricTablesDisagree": true,
+          "capHeight": 1434,
+          "xHeight": 1024,
+          "xWidthAvg": 908,
+          "zeroAdvance": 1104,
+          "ratios": {
+            "cap": 0.7002,
+            "x": 0.5,
+            "xWidthAvg": 0.4434,
+            "ascent": 1.0791,
+            "descent": 0.251,
+            "lineGap": 0
+          },
+          "axes": {},
+          "weightClass": 400,
+          "italic": false,
+          "glyphCount": 5395
+        },
+        "licence": {
+          "id": "system",
+          "licensor": "Microsoft Corporation",
+          "licensee": "the Windows install",
+          "uses": [
+            "desktop",
+            "app"
+          ],
+          "domains": null,
+          "cap": null,
+          "self_host": "not shipped (installed with Windows)",
+          "modify": {
+            "subset": false,
+            "convert": false,
+            "metric_override_css": "n/a",
+            "rename_required": null
+          },
+          "reserved_font_name": null,
+          "term": {
+            "type": "with Windows"
+          },
+          "proof": "C:/Windows/Fonts/segoeui.ttf",
+          "checked": "2026-11-09"
+        }
+      },
+      "cascadia-code": {
+        "id": "cascadia-code",
+        "family": "Cascadia Code",
+        "shelf": "custom",
+        "slots": [
+          "mono"
+        ],
+        "lucky": false,
+        "category": "mono",
+        "fallback": "mono",
+        "note": "Fuel's gauge face and the shell's numerals. Variable 200-700, latin, from Fontsource 5.3.0.",
+        "provider": "own file (Fontsource copy of Microsoft Cascadia Code)",
+        "variable": true,
+        "files": [
+          {
+            "style": "normal",
+            "file": "cascadia-code-latin-wght-normal.woff2",
+            "weight": "200 700"
+          },
+          {
+            "style": "italic",
+            "file": "cascadia-code-latin-wght-italic.woff2",
+            "weight": "200 700"
+          }
+        ],
+        "weights": {
+          "kind": "variable",
+          "min": 200,
+          "max": 700,
+          "available": [
+            400,
+            500,
+            600,
+            700
+          ]
+        },
+        "italics": {
+          "kind": "variable",
+          "min": 200,
+          "max": 700
+        },
+        "axes": {
+          "wght": [
+            200,
+            400,
+            700
+          ]
+        },
+        "metrics": {
+          "names": {
+            "family": "Cascadia Code",
+            "fullName": "Cascadia Code Regular",
+            "postscriptName": "CascadiaCode-Regular"
+          },
+          "unitsPerEm": 2048,
+          "hhea": {
+            "ascent": 1900,
+            "descent": -480,
+            "lineGap": 0
+          },
+          "typo": {
+            "ascent": 1900,
+            "descent": -480,
+            "lineGap": 0
+          },
+          "win": {
+            "ascent": 2226,
+            "descent": 480
+          },
+          "useTypoMetrics": true,
+          "metricTablesDisagree": false,
+          "capHeight": 1420,
+          "xHeight": 1060,
+          "xWidthAvg": 1200,
+          "zeroAdvance": 1200,
+          "ratios": {
+            "cap": 0.6934,
+            "x": 0.5176,
+            "xWidthAvg": 0.5859,
+            "ascent": 0.9277,
+            "descent": 0.2344,
+            "lineGap": 0
+          },
+          "axes": {
+            "wght": [
+              200,
+              400,
+              700
+            ]
+          },
+          "weightClass": 400,
+          "italic": false,
+          "glyphCount": 448
+        },
+        "licence": {
+          "id": "OFL-1.1",
+          "licensor": "Microsoft Corporation",
+          "licensee": "n/a (open)",
+          "uses": [
+            "web",
+            "desktop",
+            "app"
+          ],
+          "domains": "any",
+          "cap": null,
+          "self_host": "allowed",
+          "modify": {
+            "subset": true,
+            "convert": true,
+            "metric_override_css": "allowed",
+            "rename_required": false
+          },
+          "reserved_font_name": null,
+          "term": {
+            "type": "perpetual"
+          },
+          "proof": "fonts/cascadia-code/OFL.txt",
+          "checked": "2026-11-09"
+        }
+      }
+    }
+  }
+}

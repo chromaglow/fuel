@@ -41,7 +41,7 @@ body {
 }
 
 body {
-  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  font-family: var(--fd-face-mono);
   color: var(--text);
   padding: 8px;
 }
@@ -65,7 +65,7 @@ body.interactive {
   background: transparent;
   color: var(--muted-bright);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--fd-step-xs);
   line-height: 1;
   width: 18px;
   height: 18px;
@@ -114,7 +114,7 @@ body.interactive {
 }
 
 #mini-usd {
-  font-size: 18px;
+  font-size: var(--fd-step-h-md);
   font-weight: 300;
   color: #f0f9ff;
   text-shadow: 0 0 16px rgba(34, 211, 238, 0.35);
@@ -215,7 +215,7 @@ header {
 }
 
 #model {
-  font-size: 10.5px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--accent);
@@ -226,7 +226,7 @@ header {
 }
 
 #status {
-  font-size: 9.5px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.08em;
   color: var(--muted);
 }
@@ -263,7 +263,7 @@ header {
 }
 
 #usd {
-  font-size: 31px;
+  font-size: var(--fd-step-display);
   font-weight: 300;
   line-height: 1;
   color: #f0f9ff;
@@ -273,7 +273,7 @@ header {
 }
 
 #usd-label {
-  font-size: 8px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--muted);
@@ -281,7 +281,7 @@ header {
 }
 
 #tokens {
-  font-size: 10px;
+  font-size: var(--fd-step-xs);
   color: var(--muted-bright);
   margin-top: 7px;
 }
@@ -292,7 +292,7 @@ header {
   right: 0;
   top: 178px;
   text-align: center;
-  font-size: 10px;
+  font-size: var(--fd-step-xs);
   color: var(--accent);
   pointer-events: none;
   transition: color 300ms ease;
@@ -345,7 +345,7 @@ header {
   justify-content: space-between;
   gap: 6px;
   margin-top: 4px;
-  font-size: 8.5px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.04em;
   color: var(--muted);
   white-space: nowrap;
@@ -370,7 +370,7 @@ footer {
   justify-content: space-between;
   align-items: center;
   gap: 8px;
-  font-size: 9.5px;
+  font-size: var(--fd-step-xs);
   color: var(--muted);
   border-top: 1px solid rgba(148, 163, 184, 0.09);
   padding-top: 8px;
@@ -485,7 +485,7 @@ body:not(.expanded) footer {
     opacity 260ms ease,
     transform 260ms ease;
   overflow: hidden;
-  font-size: 9.5px;
+  font-size: var(--fd-step-xs);
 }
 
 body.expanded #panel {
@@ -519,7 +519,7 @@ body.expanded #panel {
 
 #panel .sub {
   margin: 10px 0 5px;
-  font-size: 8px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #475569;
@@ -561,7 +561,7 @@ body.expanded #panel {
 }
 #panel .catch-rate {
   color: var(--accent);
-  font-size: 14px;
+  font-size: var(--fd-step-md);
   font-weight: 600;
   font-variant-numeric: tabular-nums;
 }
@@ -592,7 +592,7 @@ body.expanded #panel {
 #panel .badge {
   padding: 0 5px;
   border-radius: 3px;
-  font-size: 8px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
@@ -714,7 +714,7 @@ body.mini #mini:hover {
   gap: 8px;
 }
 #history[hidden] { display: none; }
-#history .sub { margin: 4px 0 0; font-size: 8px; letter-spacing: 0.2em; text-transform: uppercase; color: #475569; }
+#history .sub { margin: 4px 0 0; font-size: var(--fd-step-xs); letter-spacing: 0.2em; text-transform: uppercase; color: #475569; }
 /* The card's own header rule stacks its children; this one is a row. */
 #history .hist-head { flex-direction: row; justify-content: space-between; align-items: center; padding-right: 0; }
 .hist-head .sub { margin: 0; color: var(--muted-bright); }
@@ -725,15 +725,15 @@ body.mini #mini:hover {
 .hist-bar:hover i { background: var(--accent-bright, #67e8f9); }
 .hist-bar.is-today i { background: var(--accent, #22d3ee); box-shadow: 0 0 8px rgba(34, 211, 238, 0.5); }
 .hist-bar.is-best i { background: #fbbf24; }
-.hist-axis { display: flex; justify-content: space-between; font-size: 8px; color: var(--muted); margin-top: -4px; }
-.hist-day { font-size: 10px; color: var(--muted-bright); min-height: 13px; }
+.hist-axis { display: flex; justify-content: space-between; font-size: var(--fd-step-xs); color: var(--muted); margin-top: -4px; }
+.hist-day { font-size: var(--fd-step-xs); color: var(--muted-bright); min-height: 13px; }
 
 .hist-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .hist-tile { display: flex; flex-direction: column; gap: 2px; padding: 7px 8px; border: 1px solid rgba(148, 163, 184, 0.14); border-radius: 8px; }
-.hist-label { font-size: 8px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
-.hist-value { font-size: 16px; font-weight: 300; color: #f0f9ff; white-space: nowrap; }
-.hist-note { font-size: 9px; color: var(--muted); }
-.hist-tenants { display: flex; flex-direction: column; gap: 3px; font-size: 10px; }
+.hist-label { font-size: var(--fd-step-xs); letter-spacing: 0.16em; text-transform: uppercase; color: var(--muted); }
+.hist-value { font-size: var(--fd-step-h-sm); font-weight: 300; color: #f0f9ff; white-space: nowrap; }
+.hist-note { font-size: var(--fd-step-xs); color: var(--muted); }
+.hist-tenants { display: flex; flex-direction: column; gap: 3px; font-size: var(--fd-step-xs); }
 .hist-tenant { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: baseline; }
 .hist-foot { margin-top: 4px; }
 #history .tenant.coder { color: var(--t-coder); }
@@ -753,7 +753,7 @@ body.mini #mini:hover {
 #record {
   margin-top: 6px;
   padding: 1px 6px;
-  font-size: 7.5px;
+  font-size: var(--fd-step-xs);
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: #fbbf24;
@@ -777,7 +777,7 @@ body.mini #mini:hover {
   left: 0;
   right: 0;
   text-align: center;
-  font-size: 11px;
+  font-size: var(--fd-step-xs);
   font-weight: 500;
   color: #fde68a;
   text-shadow: 0 0 10px rgba(251, 191, 36, 0.8);
@@ -794,7 +794,7 @@ body.mini #mini:hover {
 /* The Lively / Calm switch in the history panel. */
 .hist-effects { display: flex; align-items: center; gap: 6px; margin-top: 6px; }
 .hist-effects .hist-label { margin-right: auto; }
-.hist-fx { width: auto; padding: 2px 8px; font-size: 9px; letter-spacing: 0.12em; text-transform: uppercase; }
+.hist-fx { width: auto; padding: 2px 8px; font-size: var(--fd-step-xs); letter-spacing: 0.12em; text-transform: uppercase; }
 .hist-fx.is-on { color: var(--accent-bright); background: rgba(34, 211, 238, 0.14); }
 
-#studio-open { font-size: 15px; }
+#studio-open { font-size: var(--fd-step-lg); }
