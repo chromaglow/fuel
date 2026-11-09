@@ -4,9 +4,13 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' mise-fonts:"
     />
     <title>fuel</title>
+    <!-- Mise (trial): the HUD recipe, applied before first paint; fonts over mise-fonts:// -->
+    <link rel="stylesheet" href="./mise/mise.css" />
+    <script src="./mise/mise.js"></script>
+    <script src="./mise/recipe.js"></script>
     <link rel="stylesheet" href="./style.css" />
   </head>
   <body class="phase-offline">

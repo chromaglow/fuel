@@ -41,7 +41,8 @@ body {
 }
 
 body {
-  font-family: "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  /* Mise (trial): the recipe's mono face; the old stack stays as the fallback */
+  font-family: var(--fd-face-mono, "Cascadia Code", "JetBrains Mono", Consolas, monospace);
   color: var(--text);
   padding: 8px;
 }

@@ -1,5 +1,6 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Notification, type Tray } from 'electron'
 import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { execFileSync } from 'node:child_process'
 import { appendFileSync } from 'node:fs'
 import type {
@@ -764,6 +765,15 @@ if (process.argv.includes('--unhook')) {
   }
   process.exit(0)
 }
+
+// Mise (trial): the HUD's fonts come over a privileged mise-fonts:// scheme, never file://. The helper is
+// mise/delivery/electron/index.cjs, shipped unmodified in resources/mise/. Schemes must be registered before 'ready'.
+const mise = createRequire(import.meta.url)(join(app.getAppPath(), 'resources', 'mise', 'electron.cjs')) as {
+  registerSchemes(o?: { fonts?: string; app?: string | false }): unknown
+  serveFonts(o: { dir: string }): string
+}
+mise.registerSchemes({ app: false })
+void app.whenReady().then(() => mise.serveFonts({ dir: join(app.getAppPath(), 'resources', 'mise-fonts') }))
 
 // A second instance would double-write samples and fight over the window slot.
 if (!app.requestSingleInstanceLock()) {
